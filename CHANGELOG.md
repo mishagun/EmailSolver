@@ -13,6 +13,8 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-03
 
+--- COMMIT: a6aabcc "Add deployment logic, concurrent classification, Gmail user labels, and E2E tests" ---
+
 [21:50] Created CHANGELOG.md with timestamped format and commit checkpoint markers
 
 [21:48] Created `.claude/settings.json` with Stop hook to enforce CHANGELOG updates
