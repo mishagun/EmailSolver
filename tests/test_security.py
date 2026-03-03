@@ -1,0 +1,70 @@
+from datetime import UTC, datetime, timedelta
+
+import jwt as pyjwt
+import pytest
+from cryptography.fernet import Fernet
+
+from app.core.security import FernetSecurityService
+
+
+@pytest.fixture
+def security_service() -> FernetSecurityService:
+    return FernetSecurityService(
+        fernet_key=Fernet.generate_key().decode(),
+        jwt_secret_key="test-secret-key",
+        jwt_algorithm="HS256",
+        jwt_expire_minutes=60,
+    )
+
+
+class TestTokenEncryption:
+    def test_encrypt_decrypt_roundtrip(self, security_service: FernetSecurityService) -> None:
+        original = "my-secret-token"
+        encrypted = security_service.encrypt_token(token=original)
+        assert encrypted != original
+        decrypted = security_service.decrypt_token(encrypted_token=encrypted)
+        assert decrypted == original
+
+    def test_encrypted_token_is_not_plaintext(
+        self, security_service: FernetSecurityService
+    ) -> None:
+        token = "access-token-12345"
+        encrypted = security_service.encrypt_token(token=token)
+        assert token not in encrypted
+
+    def test_different_tokens_produce_different_ciphertexts(
+        self, security_service: FernetSecurityService
+    ) -> None:
+        enc1 = security_service.encrypt_token(token="token-1")
+        enc2 = security_service.encrypt_token(token="token-2")
+        assert enc1 != enc2
+
+
+class TestJWT:
+    def test_create_and_decode_jwt(self, security_service: FernetSecurityService) -> None:
+        token = security_service.create_jwt(user_id=42)
+        payload = security_service.decode_jwt(token=token)
+        assert payload["sub"] == "42"
+        assert "exp" in payload
+        assert "iat" in payload
+
+    def test_jwt_with_different_user_ids(self, security_service: FernetSecurityService) -> None:
+        token1 = security_service.create_jwt(user_id=1)
+        token2 = security_service.create_jwt(user_id=2)
+        assert security_service.decode_jwt(token=token1)["sub"] == "1"
+        assert security_service.decode_jwt(token=token2)["sub"] == "2"
+
+    def test_expired_jwt_rejected(self, security_service: FernetSecurityService) -> None:
+        payload = {
+            "sub": "1",
+            "exp": datetime.now(UTC) - timedelta(hours=1),
+            "iat": datetime.now(UTC) - timedelta(hours=2),
+        }
+        expired_token = pyjwt.encode(payload, "test-secret-key", algorithm="HS256")
+
+        with pytest.raises(pyjwt.ExpiredSignatureError):
+            security_service.decode_jwt(token=expired_token)
+
+    def test_invalid_jwt_rejected(self, security_service: FernetSecurityService) -> None:
+        with pytest.raises(pyjwt.DecodeError):
+            security_service.decode_jwt(token="not-a-valid-token")
