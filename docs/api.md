@@ -30,7 +30,7 @@ Starts the Google OAuth 2.0 flow. Redirects the user to Google's consent page.
 
 **Auth:** None
 
-**Response:** `302 Redirect` to Google OAuth URL.
+**Response:** `307 Redirect` to Google OAuth URL.
 
 ---
 
@@ -309,10 +309,12 @@ Filter priority (first match wins):
 | Value | Gmail effect |
 |-------|-------------|
 | `keep` | No-op |
-| `move_to_category` | Add Gmail category label, remove INBOX |
+| `move_to_category` | Create/apply Gmail user label matching category name |
 | `mark_read` | Remove UNREAD label |
 | `mark_spam` | Add SPAM label, remove INBOX |
 | `unsubscribe` | Add SPAM label, remove INBOX |
+
+Multiple actions can be applied to the same emails (e.g., `move_to_category` then `mark_read`).
 
 **Response 200:**
 ```json

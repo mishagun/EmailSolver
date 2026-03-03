@@ -51,6 +51,15 @@ class GmailService(BaseEmailService):
             message_ids=message_ids,
         )
 
+    async def get_or_create_label(
+        self, *, credentials: Credentials, label_name: str
+    ) -> str:
+        return await asyncio.to_thread(
+            self._get_or_create_label_sync,
+            credentials=credentials,
+            label_name=label_name,
+        )
+
     async def modify_messages(
         self,
         *,
@@ -173,6 +182,25 @@ class GmailService(BaseEmailService):
             batch.execute()
 
         return results
+
+    @staticmethod
+    def _get_or_create_label_sync(
+        *, credentials: Credentials, label_name: str
+    ) -> str:
+        service = build("gmail", "v1", credentials=credentials)
+        labels = service.users().labels().list(userId="me").execute()
+        for label in labels.get("labels", []):
+            if label["name"] == label_name:
+                return label["id"]
+        created = service.users().labels().create(
+            userId="me",
+            body={
+                "name": label_name,
+                "labelListVisibility": "labelShow",
+                "messageListVisibility": "show",
+            },
+        ).execute()
+        return created["id"]
 
     @staticmethod
     def _modify_messages_sync(

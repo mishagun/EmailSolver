@@ -19,13 +19,8 @@ from app.services.classification_service import BASE_CATEGORIES
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20
+CLASSIFICATION_CONCURRENCY = 3
 
-CATEGORY_TO_LABEL: dict[str, str] = {
-    "promotions": "CATEGORY_PROMOTIONS",
-    "social": "CATEGORY_SOCIAL",
-    "updates": "CATEGORY_UPDATES",
-    "primary": "CATEGORY_PERSONAL",
-}
 
 
 class AnalysisService:
@@ -132,15 +127,17 @@ class AnalysisService:
                         existing_categories.append(cat)
 
             all_classified: list[ClassifiedEmail] = []
+            processed_count = 0
+            semaphore = asyncio.Semaphore(CLASSIFICATION_CONCURRENCY)
 
-            for i in range(0, len(emails), BATCH_SIZE):
-                batch = emails[i : i + BATCH_SIZE]
-                results = await self._classification_service.classify_emails(
-                    emails=batch, existing_categories=existing_categories
-                )
+            async def _classify_batch(batch_emails: list) -> list[ClassifiedEmail]:
+                async with semaphore:
+                    results = await self._classification_service.classify_emails(
+                        emails=batch_emails, existing_categories=list(existing_categories)
+                    )
 
-                email_map = {e.gmail_message_id: e for e in batch}
-                classified_records = []
+                email_map = {e.gmail_message_id: e for e in batch_emails}
+                records = []
                 for result in results:
                     email = email_map.get(result.gmail_message_id)
                     if not email:
@@ -149,7 +146,7 @@ class AnalysisService:
                     if result.category not in existing_categories:
                         existing_categories.append(result.category)
 
-                    classified_records.append(
+                    records.append(
                         ClassifiedEmail(
                             analysis_id=analysis_id,
                             gmail_message_id=result.gmail_message_id,
@@ -166,17 +163,36 @@ class AnalysisService:
                             has_unsubscribe=email.has_unsubscribe,
                         )
                     )
+                return records
 
-                if classified_records:
-                    created = await self._classified_email_repo.bulk_create(
-                        emails=classified_records
-                    )
-                    all_classified.extend(created)
+            batches = [
+                emails[i : i + BATCH_SIZE]
+                for i in range(0, len(emails), BATCH_SIZE)
+            ]
+            total_batches = len(batches)
+            logger.info(
+                "Analysis %d: classifying %d emails in %d batches (concurrency=%d)",
+                analysis_id, len(emails), total_batches, CLASSIFICATION_CONCURRENCY,
+            )
+
+            for chunk_start in range(0, total_batches, CLASSIFICATION_CONCURRENCY):
+                chunk = batches[chunk_start : chunk_start + CLASSIFICATION_CONCURRENCY]
+                chunk_results = await asyncio.gather(
+                    *[_classify_batch(batch_emails=b) for b in chunk]
+                )
+
+                for records in chunk_results:
+                    if records:
+                        created = await self._classified_email_repo.bulk_create(
+                            emails=records
+                        )
+                        all_classified.extend(created)
+                    processed_count += BATCH_SIZE
 
                 await analysis_repo.update_status(
                     analysis_id=analysis_id,
                     status="processing",
-                    processed_emails=min(i + BATCH_SIZE, len(emails)),
+                    processed_emails=min(processed_count, len(emails)),
                 )
 
             # Pass 2: Verification
@@ -249,11 +265,10 @@ class AnalysisService:
         encrypted_access_token: str,
         encrypted_refresh_token: str,
     ) -> None:
-        emails_to_apply = [e for e in classified_emails if not e.action_taken]
-        if not emails_to_apply:
+        if not classified_emails:
             return
         await self._apply_actions(
-            classified_emails=emails_to_apply,
+            classified_emails=classified_emails,
             action=action,
             encrypted_access_token=encrypted_access_token,
             encrypted_refresh_token=encrypted_refresh_token,
@@ -285,21 +300,19 @@ class AnalysisService:
 
         if action == "move_to_category":
             by_category: dict[str, list[str]] = defaultdict(list)
-            by_category_ids: dict[str, list[int]] = defaultdict(list)
             for e in classified_emails:
                 cat = e.category or "primary"
                 by_category[cat].append(e.gmail_message_id)
-                by_category_ids[cat].append(e.id)
 
             for cat, cat_msg_ids in by_category.items():
-                label = CATEGORY_TO_LABEL.get(cat)
-                if label:
-                    await self._email_service.modify_messages(
-                        credentials=credentials,
-                        message_ids=cat_msg_ids,
-                        add_labels=[label],
-                        remove_labels=["INBOX"],
-                    )
+                label_id = await self._email_service.get_or_create_label(
+                    credentials=credentials, label_name=cat,
+                )
+                await self._email_service.modify_messages(
+                    credentials=credentials,
+                    message_ids=cat_msg_ids,
+                    add_labels=[label_id],
+                )
             await self._classified_email_repo.bulk_update_action_taken(
                 email_ids=email_ids, action_taken="move_to_category"
             )

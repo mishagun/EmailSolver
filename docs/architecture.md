@@ -33,9 +33,9 @@ pending → processing → completed
 
 ### Pass 1: Classification
 
-Emails are classified in batches of 20 using Claude AI.
+Emails are classified in batches of 20 using Claude AI, with up to 3 batches running concurrently (`CLASSIFICATION_CONCURRENCY = 3`). API calls use tenacity retry with exponential backoff for transient errors (429 rate limit, 529 overloaded).
 
-**Dynamic categories:** The system starts with base categories (`primary`, `promotions`, `social`, `updates`, `spam`, `newsletters`) plus any user-provided `custom_categories`. If the AI creates a new category for batch N, it becomes available for batch N+1.
+**Dynamic categories:** The system starts with base categories (`primary`, `promotions`, `social`, `updates`, `spam`, `newsletters`, `receipts`) plus any user-provided `custom_categories`. If the AI creates a new category for batch N, it becomes available for batch N+1.
 
 ```
 Batch 1: existing_categories = [primary, promotions, social, ...]
@@ -80,18 +80,14 @@ Actions map to Gmail API operations:
 | Action | Gmail API call |
 |--------|---------------|
 | `keep` | No-op |
-| `move_to_category` | `modify_messages(add_labels=[CATEGORY_X], remove_labels=[INBOX])` |
+| `move_to_category` | `get_or_create_label(category_name)` then `modify_messages(add_labels=[label_id])` |
 | `mark_read` | `modify_messages(remove_labels=[UNREAD])` |
 | `mark_spam` | `modify_messages(add_labels=[SPAM], remove_labels=[INBOX])` |
 | `unsubscribe` | `modify_messages(add_labels=[SPAM], remove_labels=[INBOX])` |
 
-**Category-to-label mapping** for `move_to_category`:
-- `promotions` → `CATEGORY_PROMOTIONS`
-- `social` → `CATEGORY_SOCIAL`
-- `updates` → `CATEGORY_UPDATES`
-- `primary` → `CATEGORY_PERSONAL`
+**Gmail user labels for `move_to_category`:** Instead of using Gmail's system category labels (CATEGORY_PROMOTIONS, etc.), the system creates Gmail user labels matching the category name (e.g., `promotions`, `receipts`, `newsletters`). Labels are created on first use via `get_or_create_label` and reused on subsequent calls.
 
-Custom/AI-created categories that don't map to Gmail labels skip the `modify_messages` call but still record the action.
+**Multiple actions per email:** Actions are not mutually exclusive. An email can be both categorized (`move_to_category`) and marked as read (`mark_read`). The `action_taken` field tracks the last action applied but does not block subsequent actions.
 
 Actions are applied in bulk (`bulk_update_action_taken`) rather than per-email for efficiency.
 

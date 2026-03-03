@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -13,6 +14,8 @@ from app.core.database import Base
 from app.models.db import Analysis, ClassifiedEmail, User  # noqa: F401
 
 config = context.config
+if os.environ.get("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

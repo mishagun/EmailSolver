@@ -5,7 +5,7 @@ Gmail inbox analyzer and cleaner with AI-powered email classification. Uses a tw
 ## Features
 
 - **Two-pass AI classification** -- Pass 1 classifies emails into dynamic categories (base + custom). Pass 2 verifies categories, merges duplicates, and recommends actions.
-- **Dynamic categories** -- Base set (primary, promotions, social, updates, spam, newsletters) plus user-provided custom categories. AI can create new ones on the fly.
+- **Dynamic categories** -- Base set (primary, promotions, social, updates, spam, newsletters, receipts) plus user-provided custom categories. AI can create new ones on the fly.
 - **Per-category action recommendations** -- AI recommends actions per category (e.g., promotions -> mark_read, move_to_category). Frontend shows these as buttons.
 - **Summary view** -- GET /analysis/{id} returns category counts + recommended actions alongside the email list.
 - **Flexible action application** -- Apply actions filtered by category, sender domain, or specific email IDs.
@@ -71,10 +71,14 @@ Copy `.env.example` to `.env` and fill in:
 ### Docker
 
 ```bash
+# Full deployment (builds, migrates, starts)
+bash scripts/deploy.sh
+
+# Or manually
 docker compose up
 ```
 
-This starts PostgreSQL and the app on port 8000.
+Docker Compose runs a one-shot `migrations` service before starting the app. The app depends on `migrations: service_completed_successfully`.
 
 ## API Overview
 

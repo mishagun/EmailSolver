@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if any code files were modified in this session (look at tool calls for Edit, Write, or Bash commands that changed files). If code was changed but CHANGELOG.md was NOT updated, return {\"decision\": \"block\", \"reason\": \"CHANGELOG.md must be updated. Add a timestamped entry like '[HH:MM] description of change'. Use today's date section. If a commit was made, also add a commit checkpoint line: '--- COMMIT: <hash> \"message\" ---'\"}. If CHANGELOG.md was already updated or no code files were modified, return {\"decision\": \"allow\"}."
+          }
+        ]
+      }
+    ]
+  }
+}

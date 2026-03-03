@@ -1,7 +1,10 @@
 import json
 import logging
+import re
 
-from anthropic import AsyncAnthropic
+from anthropic import APIStatusError, AsyncAnthropic
+from anthropic.types import Message, TextBlock
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from app.core.protocols import BaseClassificationService
 from app.models.schemas import (
@@ -13,7 +16,7 @@ from app.models.schemas import (
 
 logger = logging.getLogger(__name__)
 
-BASE_CATEGORIES = ["primary", "promotions", "social", "updates", "spam", "newsletters"]
+BASE_CATEGORIES = ["primary", "promotions", "social", "updates", "spam", "newsletters", "receipts"]
 
 CLASSIFICATION_SYSTEM_PROMPT = """\
 You are an email classification assistant. \
@@ -47,10 +50,62 @@ Return JSON:
 Return ONLY the JSON object, no other text."""
 
 
+def _extract_json(response: Message) -> str:
+    logger.debug(
+        "API response: stop_reason=%s, content_blocks=%d, usage=%s",
+        response.stop_reason,
+        len(response.content),
+        response.usage,
+    )
+    for i, block in enumerate(response.content):
+        logger.debug("Block %d: type=%s", i, block.type)
+        if isinstance(block, TextBlock):
+            logger.debug("Block %d text (first 500 chars): %s", i, block.text[:500])
+            if block.text:
+                text = block.text.strip()
+                fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+                if fence_match:
+                    return fence_match.group(1).strip()
+                return text
+    block_types = [b.type for b in response.content]
+    raise ValueError(
+        f"No text content in API response (stop_reason={response.stop_reason}, blocks={block_types})"
+    )
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    return isinstance(exc, APIStatusError) and exc.status_code in {429, 529}
+
+
+def _log_retry(retry_state) -> None:
+    logger.warning(
+        "Anthropic API error (attempt %d/%d), retrying in %.1fs: %s",
+        retry_state.attempt_number,
+        3,
+        retry_state.next_action.sleep if retry_state.next_action else 0,
+        retry_state.outcome.exception(),
+    )
+
+
 class ClaudeClassificationService(BaseClassificationService):
     def __init__(self, *, api_key: str, model: str) -> None:
         self._client = AsyncAnthropic(api_key=api_key)
         self._model = model
+
+    @retry(
+        retry=retry_if_exception(_is_retryable),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=2, max=16),
+        before_sleep=_log_retry,
+        reraise=True,
+    )
+    async def _create_message(self, *, system: str, content: str) -> Message:
+        return await self._client.messages.create(
+            model=self._model,
+            max_tokens=4096,
+            system=system,
+            messages=[{"role": "user", "content": content}],
+        )
 
     async def classify_emails(
         self,
@@ -78,20 +133,17 @@ class ClaudeClassificationService(BaseClassificationService):
             for e in emails
         ]
 
-        response = await self._client.messages.create(
-            model=self._model,
-            max_tokens=4096,
+        logger.info("Classifying %d emails with model=%s", len(emails), self._model)
+
+        response = await self._create_message(
             system=system_prompt,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Classify these emails:\n{json.dumps(emails_data)}",
-                }
-            ],
+            content=f"Classify these emails:\n{json.dumps(emails_data)}",
         )
 
-        raw_text = response.content[0].text
+        raw_text = _extract_json(response)
+        logger.debug("Classification raw JSON (first 500 chars): %s", raw_text[:500])
         results = json.loads(raw_text)
+        logger.info("Classification returned %d results", len(results))
         return [ClassificationResult(**r) for r in results]
 
     async def verify_categories(
@@ -102,19 +154,15 @@ class ClaudeClassificationService(BaseClassificationService):
 
         samples_text = json.dumps(category_samples, indent=2)
 
-        response = await self._client.messages.create(
-            model=self._model,
-            max_tokens=4096,
+        logger.info("Verifying %d categories with model=%s", len(category_samples), self._model)
+
+        response = await self._create_message(
             system=VERIFICATION_SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Categories and samples:\n{samples_text}",
-                }
-            ],
+            content=f"Categories and samples:\n{samples_text}",
         )
 
-        raw_text = response.content[0].text
+        raw_text = _extract_json(response)
+        logger.debug("Verification raw JSON (first 500 chars): %s", raw_text[:500])
         data = json.loads(raw_text)
 
         merges = [CategoryMerge(**m) for m in data.get("merges", [])]

@@ -3,8 +3,11 @@ import subprocess
 import sys
 import webbrowser
 
+from pathlib import Path
+
 import httpx
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BASE_URL = "http://localhost:8000"
 API = f"{BASE_URL}/api/v1"
 
@@ -24,6 +27,7 @@ def run_migrations() -> bool:
         ["uv", "run", "alembic", "upgrade", "head"],
         capture_output=True,
         text=True,
+        cwd=PROJECT_ROOT,
     )
     if result.returncode != 0:
         print(f"  Migration failed: {result.stderr.strip()}")

@@ -1,0 +1,86 @@
+# EmailSolver — Project Guidelines
+
+## Architecture
+
+- **Clean Architecture** with clear layer separation: routes -> services -> repositories -> database
+- **Protocol-based abstractions** (`app/core/protocols.py`) — all services implement abstract base classes for testability and dependency inversion
+- **Dependency injection** via FastAPI's `Depends()` (`app/core/dependencies.py`) — services are wired up here, not instantiated in business logic
+- **Repository pattern** — data access is isolated behind repository interfaces; two patterns coexist:
+  - Session-injected (request-scoped)
+  - Session-maker (for background tasks that outlive the request)
+
+## Key Design Decisions
+
+- **Gmail user labels** (not system category labels) for `move_to_category` — labels are created via `get_or_create_label` with the category name directly (e.g., `promotions`, `receipts`). No label prefixes.
+- **Actions are not mutually exclusive** — `action_taken` tracks what was applied but does not block subsequent actions. Users can `move_to_category` then `mark_read` on the same emails.
+- **Concurrent classification** — batches of 20 emails are classified in parallel (`CLASSIFICATION_CONCURRENCY = 3` in `analysis_service.py`) using `asyncio.gather` + semaphore
+- **Retry with tenacity** — Anthropic API calls retry on 429 (rate limit) and 529 (overloaded) with exponential backoff, configured in `classification_service.py`
+- **JSON extraction from Claude responses** — `_extract_json()` in `classification_service.py` handles markdown code fences and non-text content blocks
+- **Base categories**: `primary`, `promotions`, `social`, `updates`, `spam`, `newsletters`, `receipts` — AI can create additional categories dynamically
+- **No hard cap on email count** — the system handles thousands of emails through batched Gmail fetching (50/batch), concurrent classification (20/batch, 3 concurrent), and bulk Gmail actions (1000/batch)
+
+## Deployment
+
+- `docker-compose.yml` has a `migrations` one-shot service that runs `alembic upgrade head` before the app starts
+- `alembic/env.py` overrides `sqlalchemy.url` with `DATABASE_URL` env var when set (required for Docker where DB host is `postgres`, not `localhost`)
+- `scripts/deploy.sh` — validates `.env`, builds, starts services, polls health
+- `Dockerfile` includes a `HEALTHCHECK` using python urllib (no curl in slim image)
+
+## Testing
+
+- **Unit tests** (`tests/`) — pytest + pytest-asyncio, mock external services via protocol abstractions
+- **E2E scripts** (`scripts/`) — `test_all.py` runs 11 steps against a live server with real Gmail OAuth; `test_auth_flow.py` covers auth only. These require a real user and are not run in CI.
+- NEVER create tests that check log messages using caplog. Log messages are implementation details. Test behavior and state changes instead.
+- When writing tests, mock at the protocol boundary (e.g., mock `BaseEmailService`, not `gmail.build()`)
+
+## Documentation
+
+- **Every change must be documented.** When modifying behavior, update the relevant docs (`docs/architecture.md`, `docs/api.md`, `docs/frontend-guide.md`, this file) in the same session. Future developers (and future Claude sessions) rely on docs to understand what the system does and why.
+- Update `CLAUDE.md` when making architectural or design decisions — this file is the primary source of truth for how the project works and what conventions to follow.
+- `README.md` covers setup and public-facing info. `docs/` covers internals. Keep both in sync with actual behavior.
+- Don't let docs drift — outdated docs are worse than no docs because they mislead.
+
+### Changelog (`CHANGELOG.md`)
+
+- **Every code change must have a timestamped entry** in `CHANGELOG.md`. A Stop hook enforces this.
+- Format: `[HH:MM] description of what changed and why`
+- Group under date headers: `## YYYY-MM-DD`
+- Newest entries at the top within each date section.
+- **Commit checkpoints:** When a commit is made, add a marker line:
+  ```
+  --- COMMIT: abc1234 "commit message here" ---
+  ```
+- Entries between two commit markers represent uncommitted changes. This lets future agents trace what was changed before/after each commit.
+- Keep entries concise but specific — mention file names and the behavioral change, not just "updated code".
+
+## Code Style
+
+- All functions must have type hints
+- Use keyword arguments for function calls
+- No unnecessary docstrings or comments — code should be self-explanatory
+- Use `kwargs` over positional args in function signatures
+- Avoid over-engineering — no abstractions for one-time operations
+- Follow existing patterns — check `protocols.py` before adding new service methods
+- Ruff for linting (E, F, I, N, UP, B, SIM rules), mypy strict mode for type checking
+
+## File Layout
+
+```
+app/
+  api/routes/          # FastAPI route handlers (auth, analysis, emails)
+  core/                # Config, database, protocols, security, DI
+  models/              # SQLAlchemy models (db.py) + Pydantic schemas (schemas.py)
+  repositories/        # Data access layer
+  services/            # Business logic (analysis, classification, gmail, auth)
+tests/                 # Pytest test suite
+alembic/               # Database migrations
+docs/                  # API reference, architecture, frontend guide
+scripts/               # Deployment + E2E test scripts (not CI)
+```
+
+## Common Workflows
+
+- **Adding a new action type**: Add to `ActionType` enum in `schemas.py`, implement in `_apply_actions()` in `analysis_service.py`
+- **Adding a new base category**: Add to `BASE_CATEGORIES` in `classification_service.py`
+- **Adding a new API endpoint**: Add route in `app/api/routes/`, wire dependencies in `dependencies.py`, add protocol method if new service logic needed
+- **Database changes**: `uv run alembic revision --autogenerate -m "description"` then `uv run alembic upgrade head`

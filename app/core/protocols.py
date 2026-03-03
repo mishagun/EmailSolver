@@ -37,6 +37,11 @@ class BaseEmailService(ABC):
     ) -> None: ...
 
     @abstractmethod
+    async def get_or_create_label(
+        self, *, credentials: Any, label_name: str
+    ) -> str: ...
+
+    @abstractmethod
     async def trash_messages(
         self, *, credentials: Any, message_ids: list[str]
     ) -> None: ...

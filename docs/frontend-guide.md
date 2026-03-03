@@ -91,7 +91,7 @@ Summary is sorted by count (descending). Render as:
 Each action button in `recommended_actions` maps to an `ActionType`:
 - `keep` -- no action needed (gray/disabled button)
 - `mark_read` -- marks emails as read
-- `move_to_category` -- moves to Gmail category tab
+- `move_to_category` -- applies a Gmail user label matching the category name
 - `mark_spam` -- marks as spam
 - `unsubscribe` -- marks as spam (for newsletters with unsubscribe headers)
 
@@ -165,7 +165,7 @@ The `classified_emails` array contains all classified emails:
 - Filter/group by `category` to show per-category lists
 - Sort by `importance` (5 = most important) within each category
 - Show `confidence` as a visual indicator (color/badge)
-- `action_taken` is non-null after an action has been applied
+- `action_taken` tracks the last action applied; multiple actions can be applied to the same email
 - `sender_type` can be used for visual grouping (human emails vs automated)
 
 ---

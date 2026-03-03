@@ -15,14 +15,34 @@ services:
       timeout: 5s
       retries: 5
 
+  migrations:
+    build: .
+    command: ["uv", "run", "alembic", "upgrade", "head"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://emailsolver:emailsolver@postgres:5432/emailsolver
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   app:
     build: .
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://emailsolver:emailsolver@postgres:5432/emailsolver
     depends_on:
       postgres:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 volumes:
   pgdata:
