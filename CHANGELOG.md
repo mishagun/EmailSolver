@@ -13,16 +13,20 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-05
 
+[16:20] Fix two HIGH security vulnerabilities in TUI:
+- `tui/app.py`: `save_token` now sets `mode=0o700` on token directory and `chmod(0o600)` on token file to prevent world-readable JWT.
+- `tui/screens/login.py`: Added `_OAUTH_TIMEOUT_SECONDS = 120`. Server timeout + deadline-based async loop prevent indefinite hangs when user abandons browser flow.
+- `tests/tui/test_screens.py`: Added `mock.timeout` support and `test_save_token_sets_owner_only_permissions`.
+
 [16:10] Fix HIGH security vulnerabilities: insecure defaults and JWT revocation:
-- `app/core/config.py`: Added `field_validator` for `jwt_secret_key` (min 32 chars), `fernet_key` (required), and `jwt_algorithm` (HS256/HS384/HS512 allowlist). Removed insecure `"change-me-to-a-random-secret"` default — startup now fails fast when secrets are not configured.
-- `app/core/security.py`: Added `jti` (UUID) claim to every JWT via `create_jwt`. `decode_jwt` checks `jti` against an in-memory denylist before returning payload. New `revoke_jwt` method adds a token's `jti` to the denylist with TTL equal to remaining token lifetime. Denylist is cleaned up on each revoke call.
-- `tests/test_security.py`: Updated local `security_service` fixture to use a 32+ char secret. Added `test_jwt_contains_jti`, `test_revoked_jwt_rejected`, `test_revoke_invalid_token_no_error`.
-- `tests/conftest.py`: Updated `security_service` fixture `jwt_secret_key` to meet new 32-char minimum.
+- `app/core/config.py`: Added `field_validator` for `jwt_secret_key` (min 32 chars), `fernet_key` (required), and `jwt_algorithm` (HS256/HS384/HS512 allowlist). Removed insecure default.
+- `app/core/security.py`: Added `jti` (UUID) claim to every JWT. `decode_jwt` checks denylist. New `revoke_jwt` method for logout revocation.
+- `tests/test_security.py`, `tests/conftest.py`: Updated JWT secret to 32+ chars. Added jti and revocation tests.
 
 [16:00] Fix two CRITICAL OAuth security vulnerabilities:
-- `app/services/auth_service.py`: Add server-side TTL state store with `threading.Lock`. `start_authorization()` stores `nonce -> (code_verifier, expires_at)` server-side. `exchange_code()` pops the nonce (one-time use), raises `ValueError` if not found/expired. Code verifier no longer embedded in state URL.
-- `app/api/routes/auth.py`: Added `_ALLOWED_PORT_RANGE = range(1024, 65536)`. Validate `callback_port` in both `/login` and `/callback` — raise HTTP 400 for ports outside range.
-- `tests/test_auth_routes.py`: Updated states to `"test-nonce"`. Added 6 new tests for port validation and state rejection.
+- `app/services/auth_service.py`: Server-side TTL state store. Code verifier no longer in state URL.
+- `app/api/routes/auth.py`: `callback_port` range validation (1024-65535) at both `/login` and `/callback`.
+- `tests/test_auth_routes.py`: 6 new tests for port validation and state rejection.
 
 [15:30] Update auth route tests for redirect-based callback:
 - `tests/test_auth_routes.py`: Callback tests now assert on 307 redirect + location header instead of JSON. Added `test_login_embeds_callback_port_in_state`, `test_callback_with_callback_port_redirects_to_localhost`, `test_success_renders_html_with_token`. Extracted `_mock_auth` helper.

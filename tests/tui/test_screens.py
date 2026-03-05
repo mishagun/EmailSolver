@@ -1,3 +1,4 @@
+import stat
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
@@ -40,6 +41,7 @@ def _mock_server(*, token: str | None = None) -> MagicMock:
     mock = MagicMock()
     mock.server_address = ("localhost", 54321)
     mock.server_close.return_value = None
+    mock.timeout = None
 
     def fake_handle_request() -> None:
         _CallbackHandler.token = token
@@ -436,3 +438,12 @@ class TestAppTokenPersistence:
         app = EmailSolverApp(config=config)
         result = app._load_token()
         assert result == "jwt-token"
+
+    async def test_save_token_sets_owner_only_permissions(self, tmp_path: Path) -> None:
+        config = _make_config(tmp_path)
+        app = EmailSolverApp(config=config)
+        app.save_token(token="test-jwt-token")
+
+        token_file = tmp_path / "token"
+        file_mode = token_file.stat().st_mode & 0o777
+        assert file_mode == stat.S_IRUSR | stat.S_IWUSR
