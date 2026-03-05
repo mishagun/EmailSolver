@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,7 +7,7 @@ class AppConfig(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://emailsolver:emailsolver@localhost:5432/emailsolver"
 
-    jwt_secret_key: str = "change-me-to-a-random-secret"
+    jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
@@ -25,6 +26,28 @@ class AppConfig(BaseSettings):
     log_level: str = "INFO"
     app_env: str = "development"
     classified_email_ttl_days: int = 7
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def validate_jwt_secret(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("jwt_secret_key must be at least 32 characters")
+        return v
+
+    @field_validator("fernet_key")
+    @classmethod
+    def validate_fernet_key(cls, v: str) -> str:
+        if not v:
+            raise ValueError("fernet_key is required")
+        return v
+
+    @field_validator("jwt_algorithm")
+    @classmethod
+    def validate_jwt_algorithm(cls, v: str) -> str:
+        allowed = {"HS256", "HS384", "HS512"}
+        if v not in allowed:
+            raise ValueError(f"jwt_algorithm must be one of {allowed}")
+        return v
 
 
 config = AppConfig()

@@ -6,12 +6,14 @@ from cryptography.fernet import Fernet
 
 from app.core.security import FernetSecurityService
 
+_TEST_JWT_SECRET = "test-jwt-secret-key-at-least-32-chars-long"
+
 
 @pytest.fixture
 def security_service() -> FernetSecurityService:
     return FernetSecurityService(
         fernet_key=Fernet.generate_key().decode(),
-        jwt_secret_key="test-secret-key",
+        jwt_secret_key=_TEST_JWT_SECRET,
         jwt_algorithm="HS256",
         jwt_expire_minutes=60,
     )
@@ -60,7 +62,7 @@ class TestJWT:
             "exp": datetime.now(UTC) - timedelta(hours=1),
             "iat": datetime.now(UTC) - timedelta(hours=2),
         }
-        expired_token = pyjwt.encode(payload, "test-secret-key", algorithm="HS256")
+        expired_token = pyjwt.encode(payload, _TEST_JWT_SECRET, algorithm="HS256")
 
         with pytest.raises(pyjwt.ExpiredSignatureError):
             security_service.decode_jwt(token=expired_token)
@@ -68,3 +70,19 @@ class TestJWT:
     def test_invalid_jwt_rejected(self, security_service: FernetSecurityService) -> None:
         with pytest.raises(pyjwt.DecodeError):
             security_service.decode_jwt(token="not-a-valid-token")
+
+    def test_jwt_contains_jti(self, security_service: FernetSecurityService) -> None:
+        token = security_service.create_jwt(user_id=7)
+        payload = security_service.decode_jwt(token=token)
+        assert "jti" in payload
+        assert payload["jti"]
+
+    def test_revoked_jwt_rejected(self, security_service: FernetSecurityService) -> None:
+        token = security_service.create_jwt(user_id=99)
+        security_service.decode_jwt(token=token)
+        security_service.revoke_jwt(token=token)
+        with pytest.raises(pyjwt.InvalidTokenError):
+            security_service.decode_jwt(token=token)
+
+    def test_revoke_invalid_token_no_error(self, security_service: FernetSecurityService) -> None:
+        security_service.revoke_jwt(token="this-is-not-a-valid-jwt-at-all")

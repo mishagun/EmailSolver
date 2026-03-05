@@ -13,10 +13,16 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-05
 
+[16:10] Fix HIGH security vulnerabilities: insecure defaults and JWT revocation:
+- `app/core/config.py`: Added `field_validator` for `jwt_secret_key` (min 32 chars), `fernet_key` (required), and `jwt_algorithm` (HS256/HS384/HS512 allowlist). Removed insecure `"change-me-to-a-random-secret"` default — startup now fails fast when secrets are not configured.
+- `app/core/security.py`: Added `jti` (UUID) claim to every JWT via `create_jwt`. `decode_jwt` checks `jti` against an in-memory denylist before returning payload. New `revoke_jwt` method adds a token's `jti` to the denylist with TTL equal to remaining token lifetime. Denylist is cleaned up on each revoke call.
+- `tests/test_security.py`: Updated local `security_service` fixture to use a 32+ char secret. Added `test_jwt_contains_jti`, `test_revoked_jwt_rejected`, `test_revoke_invalid_token_no_error`.
+- `tests/conftest.py`: Updated `security_service` fixture `jwt_secret_key` to meet new 32-char minimum.
+
 [16:00] Fix two CRITICAL OAuth security vulnerabilities:
-- `app/services/auth_service.py`: Add server-side TTL state store (`_state_store: dict[str, tuple[str, float]]`) with `threading.Lock`. `start_authorization()` now stores `nonce -> (code_verifier, expires_at)` and returns the auth_url with only the nonce in the state (no code_verifier embedded). `exchange_code()` pops the nonce from the store (one-time use) and raises `ValueError` if not found/expired. Removed URL manipulation and `STATE_SEPARATOR`.
-- `app/api/routes/auth.py`: Added `_ALLOWED_PORT_RANGE = range(1024, 65536)`. Validate `callback_port` in both `/login` (query param) and `/callback` (extracted from state) — raise HTTP 400 for ports outside the allowed range. Wrap `exchange_code()` call in try/except to surface `ValueError` as HTTP 400.
-- `tests/test_auth_routes.py`: Updated callback test states from `"csrf|verifier"` to `"test-nonce"`. Added 5 new tests: `test_login_rejects_privileged_port`, `test_login_rejects_port_zero`, `test_login_rejects_negative_port`, `test_callback_rejects_invalid_state`, `test_callback_rejects_privileged_port`, `test_callback_rejects_port_zero`.
+- `app/services/auth_service.py`: Add server-side TTL state store with `threading.Lock`. `start_authorization()` stores `nonce -> (code_verifier, expires_at)` server-side. `exchange_code()` pops the nonce (one-time use), raises `ValueError` if not found/expired. Code verifier no longer embedded in state URL.
+- `app/api/routes/auth.py`: Added `_ALLOWED_PORT_RANGE = range(1024, 65536)`. Validate `callback_port` in both `/login` and `/callback` — raise HTTP 400 for ports outside range.
+- `tests/test_auth_routes.py`: Updated states to `"test-nonce"`. Added 6 new tests for port validation and state rejection.
 
 [15:30] Update auth route tests for redirect-based callback:
 - `tests/test_auth_routes.py`: Callback tests now assert on 307 redirect + location header instead of JSON. Added `test_login_embeds_callback_port_in_state`, `test_callback_with_callback_port_redirects_to_localhost`, `test_success_renders_html_with_token`. Extracted `_mock_auth` helper.
