@@ -31,9 +31,11 @@ Starts the Google OAuth 2.0 flow. Redirects the user to Google's consent page.
 **Auth:** None
 
 **Query params:**
-- `callback_port` (optional, int) -- local port for OAuth token delivery. When provided, the port is embedded in the OAuth state parameter and the callback will redirect the token to `http://localhost:{port}/callback?token={jwt}` instead of displaying it in the browser.
+- `callback_port` (optional, int) -- local port for OAuth token delivery. When provided, the port is embedded in the OAuth state parameter and the callback will redirect the token to `http://localhost:{port}/callback?token={jwt}` instead of displaying it in the browser. Must be in range 1024-65535; privileged ports (0-1023) and zero return 400.
 
 **Response:** `307 Redirect` to Google OAuth URL.
+
+**Error 400:** `callback_port` is outside the allowed range.
 
 ---
 
@@ -50,6 +52,8 @@ Handles the OAuth callback from Google. Creates or updates the user, encrypts to
 **Response:** `307 Redirect`
 - **With `callback_port` in state:** redirects to `http://localhost:{port}/callback?token={jwt}`
 - **Without `callback_port`:** redirects to `/api/v1/auth/success?token={jwt}`
+
+**Error 400:** State is missing, expired (>10 min), or has already been used (replay attempt). Also returned if the `callback_port` embedded in state is a privileged port.
 
 ---
 
@@ -85,7 +89,7 @@ Returns the authenticated user's info.
 
 ### `POST /api/v1/auth/logout`
 
-Revokes the user's Google tokens and clears stored credentials.
+Revokes the user's Google tokens and clears stored credentials from the database. Also revokes the current JWT via the in-memory denylist so it cannot be reused before expiry.
 
 **Auth:** Required
 

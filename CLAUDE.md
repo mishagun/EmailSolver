@@ -21,6 +21,10 @@
 - **Unsubscribe headers stored raw** — `classified_emails.unsubscribe_header` and `unsubscribe_post_header` hold the raw `List-Unsubscribe` and `List-Unsubscribe-Post` header values from Gmail. `has_unsubscribe` remains a boolean convenience flag.
 - **Real RFC 8058 one-click unsubscribe** — when `unsubscribe` action is applied, emails with `unsubscribe_post_header` + HTTP URL in `unsubscribe_header` get an HTTP POST attempt. On success: archive (remove INBOX). On failure: fall back to mark as spam + remove INBOX. All get `action_taken="unsubscribe"`.
 - **Sender grouping** — `GET /analyses/{id}/senders?category=` returns `SenderGroupSummary` (domain, display name, count, has_unsubscribe) via `GROUP BY sender_domain` in the classified_email_repository. Stateless module `unsubscribe_service.py` has no ABC — just two functions.
+- **OAuth state store** — server-side `dict` with `threading.Lock` and 10-min TTL. Nonces are consumed on first use (replay protection). PKCE `code_verifier` stays server-side only.
+- **Config fails fast on weak secrets** — `jwt_secret_key` (min 32 chars), `fernet_key` (required), `jwt_algorithm` (allowlist: HS256/HS384/HS512) validated via Pydantic `field_validator`. App won't start with insecure defaults.
+- **JWT revocation via in-memory denylist** — `jti` claim on every token, checked in `decode_jwt`. `revoke_jwt` stores jti with remaining TTL. Single-process only; multi-process needs Redis.
+- **Token file permissions** — `~/.emailsolver/token` written with `0o600`, directory with `0o700`.
 
 ## TUI (Terminal UI)
 

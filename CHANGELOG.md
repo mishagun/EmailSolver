@@ -19,6 +19,8 @@ All notable changes to EmailSolver are documented here.
 - `tests/test_security.py` (MODIFY): Added 3 tests to TestJWT — unique jti per token for same user, revoked token rejected while new token for same user still works, denylist cleanup removes expired entries when new revocation triggers cleanup.
 - `tests/test_auth_routes.py` (MODIFY): Added test_callback_rejects_failed_credentials (null token returns 400), test_callback_tokens_encrypted_in_db (access/refresh tokens never stored in plaintext), test_logout_clears_token_expiry (token_expiry set to None on logout).
 
+[16:30] Document security hardening in CLAUDE.md, docs/architecture.md, docs/api.md, docs/frontend-guide.md: OAuth state store, JWT revocation, config validation, token file permissions, port validation constraints.
+
 [16:20] Fix two HIGH security vulnerabilities in TUI:
 - `tui/app.py`: `save_token` now sets `mode=0o700` on token directory and `chmod(0o600)` on token file to prevent world-readable JWT.
 - `tui/screens/login.py`: Added `_OAUTH_TIMEOUT_SECONDS = 120`. Server timeout + deadline-based async loop prevent indefinite hangs when user abandons browser flow.
