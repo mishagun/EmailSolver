@@ -4,15 +4,15 @@ from enum import StrEnum
 from pydantic import BaseModel
 
 
+class AuthCallbackResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
 class AuthStatusResponse(BaseModel):
     authenticated: bool
     email: str | None = None
     display_name: str | None = None
-
-
-class AuthCallbackResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
 
 
 class MessageResponse(BaseModel):
@@ -51,24 +51,6 @@ class ActionType(StrEnum):
     UNSUBSCRIBE = "unsubscribe"
 
 
-class ClassificationResult(BaseModel):
-    gmail_message_id: str
-    category: str
-    importance: int
-    sender_type: str
-    confidence: float
-
-
-class CategoryMerge(BaseModel):
-    from_category: str
-    to_category: str
-
-
-class VerificationResult(BaseModel):
-    merges: list[CategoryMerge]
-    category_actions: dict[str, list[str]]
-
-
 class CategorySummary(BaseModel):
     category: str
     count: int
@@ -80,13 +62,6 @@ class SenderGroupSummary(BaseModel):
     sender_display: str
     count: int
     has_unsubscribe: bool
-
-
-class AnalysisCreateRequest(BaseModel):
-    query: str = "is:unread"
-    max_emails: int = 100
-    auto_apply: bool = False
-    custom_categories: list[str] | None = None
 
 
 class ClassifiedEmailResponse(BaseModel):
@@ -126,13 +101,15 @@ class AnalysisListResponse(BaseModel):
     total: int
 
 
+class AnalysisCreateRequest(BaseModel):
+    query: str = "is:unread"
+    max_emails: int = 100
+    auto_apply: bool = False
+    custom_categories: list[str] | None = None
+
+
 class ApplyActionsRequest(BaseModel):
     action: ActionType
     category: str | None = None
     sender_domain: str | None = None
     email_ids: list[int] | None = None
-
-
-class HealthResponse(BaseModel):
-    status: str
-    environment: str

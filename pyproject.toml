@@ -20,7 +20,14 @@ dependencies = [
     "tenacity>=9.1.4",
 ]
 
+[tool.setuptools.packages.find]
+include = ["app*", "tui*"]
+
+[project.scripts]
+emailsolver-tui = "tui.__main__:main"
+
 [project.optional-dependencies]
+tui = ["textual>=0.89.0"]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.25.0",
@@ -31,6 +38,7 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+norecursedirs = ["tests/integration"]
 filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.ruff]

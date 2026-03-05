@@ -23,20 +23,40 @@ class TestLoginRedirect:
         assert response.status_code == 307
         assert "accounts.google.com" in response.headers["location"]
 
+    @pytest.mark.asyncio
+    async def test_login_embeds_callback_port_in_state(
+        self, test_client, mock_auth_service: GoogleAuthService
+    ) -> None:
+        test_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth_service
+        )
+        response = await test_client.get(
+            "/api/v1/auth/login",
+            params={"callback_port": 54321},
+            follow_redirects=False,
+        )
+        assert response.status_code == 307
+        location = response.headers["location"]
+        assert "cb%3A54321" in location or "cb:54321" in location
+
 
 class TestCallback:
-    @pytest.mark.asyncio
-    async def test_callback_creates_user_and_returns_jwt(
-        self, test_client, db_session: AsyncSession, security_service
-    ) -> None:
+    def _mock_auth(self, *, user_info: dict) -> MagicMock:
         mock_credentials = MagicMock()
         mock_credentials.token = "access-token"
         mock_credentials.refresh_token = "refresh-token"
         mock_credentials.expiry = None
 
-        mock_auth = MagicMock(spec=GoogleAuthService)
-        mock_auth.exchange_code = MagicMock(return_value=mock_credentials)
-        mock_auth.get_user_info = MagicMock(return_value={
+        mock = MagicMock(spec=GoogleAuthService)
+        mock.exchange_code = MagicMock(return_value=mock_credentials)
+        mock.get_user_info = MagicMock(return_value=user_info)
+        return mock
+
+    @pytest.mark.asyncio
+    async def test_callback_creates_user_and_redirects(
+        self, test_client, db_session: AsyncSession, security_service
+    ) -> None:
+        mock_auth = self._mock_auth(user_info={
             "id": "google-new-user",
             "email": "newuser@example.com",
             "name": "New User",
@@ -49,12 +69,12 @@ class TestCallback:
         response = await test_client.get(
             "/api/v1/auth/callback",
             params={"code": "auth-code", "state": "csrf|verifier"},
+            follow_redirects=False,
         )
 
-        assert response.status_code == 200
-        data = response.json()
-        assert "access_token" in data
-        assert data["token_type"] == "bearer"
+        assert response.status_code == 307
+        location = response.headers["location"]
+        assert location.startswith("/api/v1/auth/success?token=")
 
         result = await db_session.execute(
             select(User).where(User.google_id == "google-new-user")
@@ -68,14 +88,7 @@ class TestCallback:
     async def test_callback_updates_existing_user(
         self, test_client, db_session: AsyncSession, test_user: User, security_service
     ) -> None:
-        mock_credentials = MagicMock()
-        mock_credentials.token = "new-access-token"
-        mock_credentials.refresh_token = "new-refresh-token"
-        mock_credentials.expiry = None
-
-        mock_auth = MagicMock(spec=GoogleAuthService)
-        mock_auth.exchange_code = MagicMock(return_value=mock_credentials)
-        mock_auth.get_user_info = MagicMock(return_value={
+        mock_auth = self._mock_auth(user_info={
             "id": test_user.google_id,
             "email": test_user.email,
             "name": "Updated Name",
@@ -88,11 +101,36 @@ class TestCallback:
         response = await test_client.get(
             "/api/v1/auth/callback",
             params={"code": "auth-code", "state": "csrf|verifier"},
+            follow_redirects=False,
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 307
         await db_session.refresh(test_user)
         assert test_user.display_name == "Updated Name"
+
+    @pytest.mark.asyncio
+    async def test_callback_with_callback_port_redirects_to_localhost(
+        self, test_client, db_session: AsyncSession, security_service
+    ) -> None:
+        mock_auth = self._mock_auth(user_info={
+            "id": "google-port-user",
+            "email": "portuser@example.com",
+            "name": "Port User",
+        })
+
+        test_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth
+        )
+
+        response = await test_client.get(
+            "/api/v1/auth/callback",
+            params={"code": "auth-code", "state": "csrf|verifier|cb:54321"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 307
+        location = response.headers["location"]
+        assert location.startswith("http://localhost:54321/callback?token=")
 
 
 class TestAuthStatus:
@@ -108,6 +146,18 @@ class TestAuthStatus:
     async def test_status_rejects_unauthenticated(self, test_client) -> None:
         response = await test_client.get("/api/v1/auth/status")
         assert response.status_code in (401, 403)
+
+
+class TestAuthSuccess:
+    @pytest.mark.asyncio
+    async def test_success_renders_html_with_token(self, test_client) -> None:
+        response = await test_client.get(
+            "/api/v1/auth/success", params={"token": "my-jwt-token"}
+        )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "my-jwt-token" in response.text
+        assert "Login successful" in response.text
 
 
 class TestLogout:

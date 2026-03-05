@@ -76,6 +76,8 @@ class ClassifiedEmail(Base):
     category: Mapped[str | None] = mapped_column(String(50))
     importance: Mapped[int | None] = mapped_column(Integer)
     has_unsubscribe: Mapped[bool | None] = mapped_column(default=False)
+    unsubscribe_header: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unsubscribe_post_header: Mapped[str | None] = mapped_column(Text, nullable=True)
     sender_type: Mapped[str | None] = mapped_column(String(50))
     confidence: Mapped[float | None] = mapped_column()
     action_taken: Mapped[str | None] = mapped_column(String(50))

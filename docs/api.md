@@ -30,27 +30,39 @@ Starts the Google OAuth 2.0 flow. Redirects the user to Google's consent page.
 
 **Auth:** None
 
+**Query params:**
+- `callback_port` (optional, int) -- local port for OAuth token delivery. When provided, the port is embedded in the OAuth state parameter and the callback will redirect the token to `http://localhost:{port}/callback?token={jwt}` instead of displaying it in the browser.
+
 **Response:** `307 Redirect` to Google OAuth URL.
 
 ---
 
 ### `GET /api/v1/auth/callback`
 
-Handles the OAuth callback from Google. Creates or updates the user, encrypts tokens, and returns a JWT.
+Handles the OAuth callback from Google. Creates or updates the user, encrypts tokens, and issues a JWT. Always responds with a redirect.
 
 **Auth:** None
 
 **Query params:**
 - `code` (required) -- authorization code from Google
-- `state` (required) -- CSRF + PKCE state
+- `state` (required) -- CSRF + PKCE state (may contain an embedded `callback_port`)
 
-**Response 200:**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer"
-}
-```
+**Response:** `307 Redirect`
+- **With `callback_port` in state:** redirects to `http://localhost:{port}/callback?token={jwt}`
+- **Without `callback_port`:** redirects to `/api/v1/auth/success?token={jwt}`
+
+---
+
+### `GET /api/v1/auth/success`
+
+Displays an HTML page with the JWT token for manual copy. Used when no `callback_port` was provided during login (e.g., browser-only flow without a local client).
+
+**Auth:** None
+
+**Query params:**
+- `token` (required) -- the JWT token to display
+
+**Response 200:** HTML page showing the token.
 
 ---
 
@@ -312,7 +324,7 @@ Filter priority (first match wins):
 | `move_to_category` | Create/apply Gmail user label matching category name |
 | `mark_read` | Remove UNREAD label |
 | `mark_spam` | Add SPAM label, remove INBOX |
-| `unsubscribe` | Add SPAM label, remove INBOX |
+| `unsubscribe` | RFC 8058 HTTP POST if supported, else add SPAM label, remove INBOX |
 
 Multiple actions can be applied to the same emails (e.g., `move_to_category` then `mark_read`).
 
@@ -324,6 +336,39 @@ Multiple actions can be applied to the same emails (e.g., `move_to_category` the
 **Error 400:** Analysis is not in `completed` status.
 **Error 404:** Analysis not found.
 **Error 422:** Invalid `action` value.
+
+---
+
+### `GET /api/v1/analysis/{id}/senders`
+
+Returns sender groups for a specific category within an analysis. Groups emails by `sender_domain` with counts and unsubscribe availability.
+
+**Auth:** Required
+
+**Query params:**
+- `category` (required) -- category to group senders for
+
+**Response 200:**
+```json
+[
+  {
+    "sender_domain": "store.com",
+    "sender_display": "shop@store.com",
+    "count": 15,
+    "has_unsubscribe": true
+  },
+  {
+    "sender_domain": "news.com",
+    "sender_display": "daily@news.com",
+    "count": 8,
+    "has_unsubscribe": false
+  }
+]
+```
+
+Sorted by count descending. `sender_display` is the first sender address seen from that domain.
+
+**Error 404:** Analysis not found.
 
 ---
 

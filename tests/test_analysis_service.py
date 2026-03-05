@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -43,6 +43,8 @@ def _make_classified_email(
     category: str = "promotions",
     action_taken: str | None = None,
     has_unsubscribe: bool = False,
+    unsubscribe_header: str | None = None,
+    unsubscribe_post_header: str | None = None,
 ) -> ClassifiedEmail:
     email = ClassifiedEmail(
         analysis_id=1,
@@ -57,6 +59,8 @@ def _make_classified_email(
         sender_type="marketing",
         confidence=0.9,
         has_unsubscribe=has_unsubscribe,
+        unsubscribe_header=unsubscribe_header,
+        unsubscribe_post_header=unsubscribe_post_header,
         action_taken=action_taken,
     )
     email.id = email_id
@@ -85,6 +89,7 @@ def _build_service(
             return_value=[_make_email_metadata()]
         )
         email_service.modify_messages = AsyncMock()
+        email_service.get_or_create_label = AsyncMock(return_value="label-id")
 
     if classification_service is None:
         classification_service = MagicMock()
@@ -504,21 +509,24 @@ class TestApplyActions:
             encrypted_refresh_token="enc-refresh",
         )
 
+        service._email_service.get_or_create_label.assert_awaited_once_with(
+            credentials=service._email_service.build_credentials.return_value,
+            label_name="promotions",
+        )
         service._email_service.modify_messages.assert_awaited_once_with(
             credentials=service._email_service.build_credentials.return_value,
             message_ids=["msg-1"],
-            add_labels=["CATEGORY_PROMOTIONS"],
-            remove_labels=["INBOX"],
+            add_labels=["label-id"],
         )
         service._classified_email_repo.bulk_update_action_taken.assert_awaited_once_with(
             email_ids=[1], action_taken="move_to_category"
         )
 
     @pytest.mark.asyncio
-    async def test_apply_actions_skips_already_applied(self) -> None:
+    async def test_apply_actions_reapplies_even_if_already_applied(self) -> None:
         service = _build_service()
         already_applied = _make_classified_email(
-            email_id=1, category="spam", action_taken="mark_spam"
+            email_id=1, msg_id="msg-1", category="spam", action_taken="mark_spam"
         )
 
         await service.apply_actions_for_analysis(
@@ -528,7 +536,12 @@ class TestApplyActions:
             encrypted_refresh_token="enc-refresh",
         )
 
-        service._email_service.modify_messages.assert_not_called()
+        service._email_service.modify_messages.assert_awaited_once_with(
+            credentials=service._email_service.build_credentials.return_value,
+            message_ids=["msg-1"],
+            add_labels=["SPAM"],
+            remove_labels=["INBOX"],
+        )
 
     @pytest.mark.asyncio
     async def test_apply_actions_keep_is_noop(self) -> None:
@@ -594,7 +607,7 @@ class TestApplyActions:
         )
 
     @pytest.mark.asyncio
-    async def test_apply_actions_unsubscribe(self) -> None:
+    async def test_apply_actions_unsubscribe_falls_back_to_spam(self) -> None:
         service = _build_service()
         newsletter_email = _make_classified_email(
             email_id=1, msg_id="msg-1", category="newsletters", has_unsubscribe=True
@@ -606,6 +619,73 @@ class TestApplyActions:
             encrypted_access_token="enc-access",
             encrypted_refresh_token="enc-refresh",
         )
+
+        service._email_service.modify_messages.assert_awaited_once_with(
+            credentials=service._email_service.build_credentials.return_value,
+            message_ids=["msg-1"],
+            add_labels=["SPAM"],
+            remove_labels=["INBOX"],
+        )
+        service._classified_email_repo.bulk_update_action_taken.assert_awaited_once_with(
+            email_ids=[1], action_taken="unsubscribe"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_http_success_archives_without_spam(self) -> None:
+        service = _build_service()
+        newsletter_email = _make_classified_email(
+            email_id=1,
+            msg_id="msg-1",
+            category="newsletters",
+            has_unsubscribe=True,
+            unsubscribe_header="<https://example.com/unsub>",
+            unsubscribe_post_header="List-Unsubscribe=One-Click-Unsubscribe",
+        )
+
+        with patch(
+            "app.services.unsubscribe_service.attempt_http_unsubscribe",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            await service._apply_actions(
+                classified_emails=[newsletter_email],
+                action="unsubscribe",
+                encrypted_access_token="enc-access",
+                encrypted_refresh_token="enc-refresh",
+            )
+
+        service._email_service.modify_messages.assert_awaited_once_with(
+            credentials=service._email_service.build_credentials.return_value,
+            message_ids=["msg-1"],
+            remove_labels=["INBOX"],
+        )
+        service._classified_email_repo.bulk_update_action_taken.assert_awaited_once_with(
+            email_ids=[1], action_taken="unsubscribe"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_http_failure_falls_back_to_spam(self) -> None:
+        service = _build_service()
+        newsletter_email = _make_classified_email(
+            email_id=1,
+            msg_id="msg-1",
+            category="newsletters",
+            has_unsubscribe=True,
+            unsubscribe_header="<https://example.com/unsub>",
+            unsubscribe_post_header="List-Unsubscribe=One-Click-Unsubscribe",
+        )
+
+        with patch(
+            "app.services.unsubscribe_service.attempt_http_unsubscribe",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            await service._apply_actions(
+                classified_emails=[newsletter_email],
+                action="unsubscribe",
+                encrypted_access_token="enc-access",
+                encrypted_refresh_token="enc-refresh",
+            )
 
         service._email_service.modify_messages.assert_awaited_once_with(
             credentials=service._email_service.build_credentials.return_value,

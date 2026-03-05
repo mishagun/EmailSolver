@@ -134,3 +134,31 @@ class SQLAlchemyClassifiedEmailRepository(BaseClassifiedEmailRepository):
                 .values(category=to_category)
             )
             await session.commit()
+
+    async def get_sender_summary(
+        self, *, analysis_id: int, category: str
+    ) -> list[dict]:
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(
+                    ClassifiedEmail.sender_domain,
+                    func.min(ClassifiedEmail.sender).label("sender_display"),
+                    func.count().label("count"),
+                    func.bool_or(ClassifiedEmail.has_unsubscribe).label("has_unsubscribe"),
+                )
+                .where(
+                    ClassifiedEmail.analysis_id == analysis_id,
+                    ClassifiedEmail.category == category,
+                )
+                .group_by(ClassifiedEmail.sender_domain)
+                .order_by(func.count().desc())
+            )
+            return [
+                {
+                    "sender_domain": row.sender_domain or "unknown",
+                    "sender_display": row.sender_display or "unknown",
+                    "count": row.count,
+                    "has_unsubscribe": row.has_unsubscribe or False,
+                }
+                for row in result.all()
+            ]

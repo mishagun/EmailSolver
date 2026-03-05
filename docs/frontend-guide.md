@@ -15,12 +15,26 @@
 
 ## 1. Authentication
 
+### Browser-only flow (no local client)
 ```
-GET /api/v1/auth/login → redirect to Google
-GET /api/v1/auth/callback?code=...&state=... → { access_token, token_type }
+GET /api/v1/auth/login → redirect to Google → callback → /auth/success (HTML page with token)
+```
+The user copies the JWT from the success page and pastes it into the application.
+
+### Local client flow (TUI, CLI, etc.)
+```
+1. Client starts a local HTTP server on localhost:{port}
+2. Client opens browser to: GET /api/v1/auth/login?callback_port={port}
+3. Server embeds callback_port in OAuth state, redirects to Google
+4. Google redirects back to server's /callback with code + state
+5. Server extracts callback_port, exchanges code, creates JWT
+6. Server redirects browser to: http://localhost:{port}/callback?token={jwt}
+7. Client's local HTTP server receives the token automatically
 ```
 
-Store the JWT `access_token` and include it in all subsequent requests:
+This works even when the server is deployed remotely (cloud) and the client runs locally — the final redirect to `localhost` happens in the user's browser, which resolves to the user's machine.
+
+Store the JWT and include it in all subsequent requests:
 ```
 Authorization: Bearer <token>
 ```
@@ -93,7 +107,7 @@ Each action button in `recommended_actions` maps to an `ActionType`:
 - `mark_read` -- marks emails as read
 - `move_to_category` -- applies a Gmail user label matching the category name
 - `mark_spam` -- marks as spam
-- `unsubscribe` -- marks as spam (for newsletters with unsubscribe headers)
+- `unsubscribe` -- attempts RFC 8058 one-click HTTP unsubscribe, then archives; falls back to mark as spam if HTTP unsubscribe fails or is unsupported
 
 ---
 

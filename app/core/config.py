@@ -22,6 +22,7 @@ class AppConfig(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5-20251001"
 
+    log_level: str = "INFO"
     app_env: str = "development"
     classified_email_ttl_days: int = 7
 

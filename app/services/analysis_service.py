@@ -19,19 +19,18 @@ from app.services.classification_service import BASE_CATEGORIES
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20
-CLASSIFICATION_CONCURRENCY = 3
-
+CLASSIFICATION_CONCURRENCY = 2
 
 
 class AnalysisService:
     def __init__(
-        self,
-        *,
-        email_service: BaseEmailService,
-        classification_service: BaseClassificationService,
-        security_service: BaseSecurityService,
-        classified_email_repo: BaseClassifiedEmailRepository,
-        async_session_maker: async_sessionmaker[AsyncSession],
+            self,
+            *,
+            email_service: BaseEmailService,
+            classification_service: BaseClassificationService,
+            security_service: BaseSecurityService,
+            classified_email_repo: BaseClassifiedEmailRepository,
+            async_session_maker: async_sessionmaker[AsyncSession],
     ) -> None:
         self._email_service = email_service
         self._classification_service = classification_service
@@ -40,15 +39,15 @@ class AnalysisService:
         self._async_session_maker = async_session_maker
 
     def start_analysis(
-        self,
-        *,
-        analysis_id: int,
-        encrypted_access_token: str,
-        encrypted_refresh_token: str,
-        query: str,
-        max_emails: int,
-        auto_apply: bool,
-        custom_categories: list[str] | None = None,
+            self,
+            *,
+            analysis_id: int,
+            encrypted_access_token: str,
+            encrypted_refresh_token: str,
+            query: str,
+            max_emails: int,
+            auto_apply: bool,
+            custom_categories: list[str] | None = None,
     ) -> asyncio.Task:
         return asyncio.create_task(
             self._run_analysis(
@@ -68,15 +67,15 @@ class AnalysisService:
         )
 
     async def _run_analysis(
-        self,
-        *,
-        analysis_id: int,
-        encrypted_access_token: str,
-        encrypted_refresh_token: str,
-        query: str,
-        max_emails: int,
-        auto_apply: bool,
-        custom_categories: list[str] | None = None,
+            self,
+            *,
+            analysis_id: int,
+            encrypted_access_token: str,
+            encrypted_refresh_token: str,
+            query: str,
+            max_emails: int,
+            auto_apply: bool,
+            custom_categories: list[str] | None = None,
     ) -> None:
         analysis_repo = self._create_analysis_repo()
         try:
@@ -161,12 +160,14 @@ class AnalysisService:
                             sender_type=result.sender_type,
                             confidence=result.confidence,
                             has_unsubscribe=email.has_unsubscribe,
+                            unsubscribe_header=email.unsubscribe_header,
+                            unsubscribe_post_header=email.unsubscribe_post_header,
                         )
                     )
                 return records
 
             batches = [
-                emails[i : i + BATCH_SIZE]
+                emails[i: i + BATCH_SIZE]
                 for i in range(0, len(emails), BATCH_SIZE)
             ]
             total_batches = len(batches)
@@ -176,7 +177,7 @@ class AnalysisService:
             )
 
             for chunk_start in range(0, total_batches, CLASSIFICATION_CONCURRENCY):
-                chunk = batches[chunk_start : chunk_start + CLASSIFICATION_CONCURRENCY]
+                chunk = batches[chunk_start: chunk_start + CLASSIFICATION_CONCURRENCY]
                 chunk_results = await asyncio.gather(
                     *[_classify_batch(batch_emails=b) for b in chunk]
                 )
@@ -244,7 +245,7 @@ class AnalysisService:
 
     @staticmethod
     def _build_category_samples(
-        *, classified_emails: list[ClassifiedEmail]
+            *, classified_emails: list[ClassifiedEmail]
     ) -> dict[str, list[dict]]:
         by_category: dict[str, list[dict]] = defaultdict(list)
         for email in classified_emails:
@@ -258,12 +259,12 @@ class AnalysisService:
         return dict(by_category)
 
     async def apply_actions_for_analysis(
-        self,
-        *,
-        classified_emails: list[ClassifiedEmail],
-        action: str,
-        encrypted_access_token: str,
-        encrypted_refresh_token: str,
+            self,
+            *,
+            classified_emails: list[ClassifiedEmail],
+            action: str,
+            encrypted_access_token: str,
+            encrypted_refresh_token: str,
     ) -> None:
         if not classified_emails:
             return
@@ -275,12 +276,12 @@ class AnalysisService:
         )
 
     async def _apply_actions(
-        self,
-        *,
-        classified_emails: list[ClassifiedEmail],
-        action: str,
-        encrypted_access_token: str,
-        encrypted_refresh_token: str,
+            self,
+            *,
+            classified_emails: list[ClassifiedEmail],
+            action: str,
+            encrypted_access_token: str,
+            encrypted_refresh_token: str,
     ) -> None:
         access_token = self._security_service.decrypt_token(
             encrypted_token=encrypted_access_token
@@ -327,7 +328,7 @@ class AnalysisService:
                 email_ids=email_ids, action_taken="mark_read"
             )
 
-        elif action in ("mark_spam", "unsubscribe"):
+        elif action == "mark_spam":
             await self._email_service.modify_messages(
                 credentials=credentials,
                 message_ids=msg_ids,
@@ -335,16 +336,56 @@ class AnalysisService:
                 remove_labels=["INBOX"],
             )
             await self._classified_email_repo.bulk_update_action_taken(
-                email_ids=email_ids, action_taken=action
+                email_ids=email_ids, action_taken="mark_spam"
+            )
+
+        elif action == "unsubscribe":
+            from app.services.unsubscribe_service import (
+                attempt_http_unsubscribe,
+                parse_unsubscribe_urls,
+            )
+
+            archive_ids: list[str] = []
+            spam_ids: list[str] = []
+
+            for e in classified_emails:
+                unsubscribed = False
+                if e.unsubscribe_post_header and e.unsubscribe_header:
+                    urls = parse_unsubscribe_urls(header=e.unsubscribe_header)
+                    for url in urls:
+                        if await attempt_http_unsubscribe(url=url):
+                            unsubscribed = True
+                            break
+
+                if unsubscribed:
+                    archive_ids.append(e.gmail_message_id)
+                else:
+                    spam_ids.append(e.gmail_message_id)
+
+            if archive_ids:
+                await self._email_service.modify_messages(
+                    credentials=credentials,
+                    message_ids=archive_ids,
+                    remove_labels=["INBOX"],
+                )
+            if spam_ids:
+                await self._email_service.modify_messages(
+                    credentials=credentials,
+                    message_ids=spam_ids,
+                    add_labels=["SPAM"],
+                    remove_labels=["INBOX"],
+                )
+            await self._classified_email_repo.bulk_update_action_taken(
+                email_ids=email_ids, action_taken="unsubscribe"
             )
 
     async def _auto_apply_actions(
-        self,
-        *,
-        classified_emails: list[ClassifiedEmail],
-        category_actions: dict[str, list[str]],
-        encrypted_access_token: str,
-        encrypted_refresh_token: str,
+            self,
+            *,
+            classified_emails: list[ClassifiedEmail],
+            category_actions: dict[str, list[str]],
+            encrypted_access_token: str,
+            encrypted_refresh_token: str,
     ) -> None:
         by_category: dict[str, list[ClassifiedEmail]] = defaultdict(list)
         for email in classified_emails:

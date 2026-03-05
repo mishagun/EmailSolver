@@ -27,6 +27,22 @@ class TestCreateAnalysis:
         mock_analysis_service.start_analysis.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_defaults_to_unread_query(
+        self, authenticated_client, mock_analysis_service: AnalysisService
+    ) -> None:
+        authenticated_client._transport.app.dependency_overrides[get_analysis_service] = (
+            lambda: mock_analysis_service
+        )
+        response = await authenticated_client.post(
+            "/api/v1/analysis",
+            json={"max_emails": 50},
+        )
+        assert response.status_code == 202
+        assert response.json()["query"] == "is:unread"
+        call_kwargs = mock_analysis_service.start_analysis.call_args.kwargs
+        assert call_kwargs["query"] == "is:unread"
+
+    @pytest.mark.asyncio
     async def test_creates_analysis_with_custom_categories(
         self, authenticated_client, mock_analysis_service: AnalysisService
     ) -> None:

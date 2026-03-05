@@ -18,6 +18,7 @@ from app.models.schemas import (
     CategorySummary,
     ClassifiedEmailResponse,
     MessageResponse,
+    SenderGroupSummary,
 )
 from app.services.analysis_service import AnalysisService
 
@@ -113,6 +114,8 @@ async def get_analysis(
             sender_type=e.sender_type,
             confidence=e.confidence,
             has_unsubscribe=e.has_unsubscribe,
+            unsubscribe_header=e.unsubscribe_header,
+            unsubscribe_post_header=e.unsubscribe_post_header,
             action_taken=e.action_taken,
         )
         for e in analysis.classified_emails
@@ -156,6 +159,30 @@ def _build_summary(
         )
         for cat, count in sorted(counts.items(), key=lambda x: -x[1])
     ]
+
+
+@router.get("/{analysis_id}/senders", response_model=list[SenderGroupSummary])
+async def get_sender_groups(
+    analysis_id: int,
+    category: str,
+    user: User = Depends(get_current_user),
+    analysis_repo: protocols.BaseAnalysisRepository = Depends(get_analysis_repository),
+    classified_email_repo: protocols.BaseClassifiedEmailRepository = Depends(
+        get_classified_email_repository
+    ),
+) -> list[SenderGroupSummary]:
+    analysis = await analysis_repo.find_by_id_and_user(
+        analysis_id=analysis_id, user_id=user.id
+    )
+    if analysis is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis not found",
+        )
+    rows = await classified_email_repo.get_sender_summary(
+        analysis_id=analysis_id, category=category
+    )
+    return [SenderGroupSummary(**row) for row in rows]
 
 
 @router.post("/{analysis_id}/apply", response_model=MessageResponse)

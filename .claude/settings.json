@@ -5,8 +5,21 @@
         "matcher": "",
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "Check if any code files were modified in this session (look at tool calls for Edit, Write, or Bash commands that changed files). If code was changed but CHANGELOG.md was NOT updated, return {\"decision\": \"block\", \"reason\": \"CHANGELOG.md must be updated. Add a timestamped entry like '[HH:MM] description of change'. Use today's date section. If a commit was made, also add a commit checkpoint line: '--- COMMIT: <hash> \"message\" ---'\"}. If CHANGELOG.md was already updated or no code files were modified, return {\"decision\": \"allow\"}."
+            "type": "command",
+            "command": "cd /Users/mikhail_f/PersonalProjects/EmailSolver && CODE_CHANGED=$(git diff --name-only -- 'app/' 'tests/' 'scripts/' 'alembic/' 2>/dev/null | head -1) && CHANGELOG_CHANGED=$(git diff --name-only -- CHANGELOG.md 2>/dev/null | head -1) && if [ -n \"$CODE_CHANGED\" ] && [ -z \"$CHANGELOG_CHANGED\" ]; then echo 'CHANGELOG.md must be updated. Add a timestamped [HH:MM] entry under todays date section describing what changed.' >&2; exit 2; else exit 0; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/mikhail_f/PersonalProjects/EmailSolver && CODE_CHANGED=$(git diff --name-only -- 'app/' 'tests/' 'scripts/' 'alembic/' 2>/dev/null | head -1) && CHANGELOG_CHANGED=$(git diff --name-only -- CHANGELOG.md 2>/dev/null | head -1) && if [ -n \"$CODE_CHANGED\" ] && [ -z \"$CHANGELOG_CHANGED\" ]; then echo 'CHANGELOG.md must be updated. Add a timestamped [HH:MM] entry under todays date section describing what changed.' >&2; exit 2; else exit 0; fi",
+            "timeout": 10
           }
         ]
       }

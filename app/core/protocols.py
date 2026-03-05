@@ -184,3 +184,8 @@ class BaseClassifiedEmailRepository(ABC):
     async def bulk_update_category(
         self, *, analysis_id: int, from_category: str, to_category: str
     ) -> None: ...
+
+    @abstractmethod
+    async def get_sender_summary(
+        self, *, analysis_id: int, category: str
+    ) -> list[dict]: ...

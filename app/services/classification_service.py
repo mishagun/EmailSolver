@@ -2,9 +2,9 @@ import json
 import logging
 import re
 
-from anthropic import APIStatusError, AsyncAnthropic
+from anthropic import APIStatusError, AsyncAnthropic, Timeout
 from anthropic.types import Message, TextBlock
-from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+from tenacity import RetryCallState, retry, retry_if_exception, stop_after_attempt
 
 from app.core.protocols import BaseClassificationService
 from app.models.schemas import (
@@ -77,26 +77,38 @@ def _is_retryable(exc: BaseException) -> bool:
     return isinstance(exc, APIStatusError) and exc.status_code in {429, 529}
 
 
-def _log_retry(retry_state) -> None:
+def _wait_for_rate_limit(retry_state: RetryCallState) -> float:
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    if isinstance(exc, APIStatusError) and exc.status_code == 429:
+        retry_after = exc.response.headers.get("retry-after")
+        if retry_after:
+            wait_seconds = float(retry_after)
+            logger.info(
+                "Rate limited (attempt %d), waiting %.1fs (retry-after header)",
+                retry_state.attempt_number, wait_seconds,
+            )
+            return wait_seconds
+    wait_seconds = min(2.0 ** retry_state.attempt_number, 60.0)
     logger.warning(
-        "Anthropic API error (attempt %d/%d), retrying in %.1fs: %s",
-        retry_state.attempt_number,
-        3,
-        retry_state.next_action.sleep if retry_state.next_action else 0,
-        retry_state.outcome.exception(),
+        "Anthropic API error (attempt %d), retrying in %.1fs: %s",
+        retry_state.attempt_number, wait_seconds, exc,
     )
+    return wait_seconds
 
 
 class ClaudeClassificationService(BaseClassificationService):
     def __init__(self, *, api_key: str, model: str) -> None:
-        self._client = AsyncAnthropic(api_key=api_key)
+        self._client = AsyncAnthropic(
+            api_key=api_key,
+            max_retries=0,
+            timeout=Timeout(timeout=120.0, connect=10.0),
+        )
         self._model = model
 
     @retry(
         retry=retry_if_exception(_is_retryable),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=2, max=16),
-        before_sleep=_log_retry,
+        stop=stop_after_attempt(6),
+        wait=_wait_for_rate_limit,
         reraise=True,
     )
     async def _create_message(self, *, system: str, content: str) -> Message:
@@ -140,10 +152,19 @@ class ClaudeClassificationService(BaseClassificationService):
             content=f"Classify these emails:\n{json.dumps(emails_data)}",
         )
 
+        if response.stop_reason != "end_turn":
+            logger.warning(
+                "Classification response truncated: stop_reason=%s (model=%s, %d emails)",
+                response.stop_reason, self._model, len(emails),
+            )
+
         raw_text = _extract_json(response)
         logger.debug("Classification raw JSON (first 500 chars): %s", raw_text[:500])
         results = json.loads(raw_text)
-        logger.info("Classification returned %d results", len(results))
+        logger.info(
+            "Classification returned %d results for %d emails",
+            len(results), len(emails),
+        )
         return [ClassificationResult(**r) for r in results]
 
     async def verify_categories(

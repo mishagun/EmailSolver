@@ -117,6 +117,7 @@ class GmailService(BaseEmailService):
         subject = cls._extract_header(headers=headers, name="Subject")
         date_str = cls._extract_header(headers=headers, name="Date")
         list_unsub = cls._extract_header(headers=headers, name="List-Unsubscribe")
+        list_unsub_post = cls._extract_header(headers=headers, name="List-Unsubscribe-Post")
 
         return EmailMetadata(
             gmail_message_id=message["id"],
@@ -127,6 +128,8 @@ class GmailService(BaseEmailService):
             snippet=message.get("snippet", "")[:300],
             received_at=cls._parse_date(date_str=date_str),
             has_unsubscribe=list_unsub is not None,
+            unsubscribe_header=list_unsub,
+            unsubscribe_post_header=list_unsub_post,
         )
 
     @staticmethod
@@ -175,6 +178,7 @@ class GmailService(BaseEmailService):
                             "Subject",
                             "Date",
                             "List-Unsubscribe",
+                            "List-Unsubscribe-Post",
                         ],
                     ),
                     callback=callback,

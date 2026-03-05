@@ -35,10 +35,11 @@ def _make_ai_response(*, emails: list[EmailMetadata]) -> list[dict]:
 
 
 def _build_service(*, response_text: str) -> ClaudeClassificationService:
+    from anthropic.types import TextBlock
+
     service = ClaudeClassificationService(api_key="test-key", model="test-model")
     mock_client = AsyncMock()
-    content_block = MagicMock()
-    content_block.text = response_text
+    content_block = TextBlock(type="text", text=response_text)
     mock_client.messages.create.return_value = MagicMock(content=[content_block])
     service._client = mock_client
     return service

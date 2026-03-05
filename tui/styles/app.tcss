@@ -1,0 +1,221 @@
+Screen {
+    background: $surface;
+}
+
+/* Login Screen */
+#login-box {
+    width: 60;
+    height: auto;
+    padding: 1 2;
+    margin: 4 0;
+    border: solid grey;
+}
+
+#login-title {
+    text-align: center;
+    text-style: bold;
+    width: 100%;
+}
+
+#login-subtitle {
+    text-align: center;
+    color: $text-muted;
+    width: 100%;
+    padding: 0 0 1 0;
+}
+
+#login-error {
+    color: $error;
+    height: 1;
+}
+
+#token-input {
+    margin: 1 0;
+}
+
+#submit-token {
+    width: 100%;
+}
+
+/* Dashboard */
+#dashboard {
+    padding: 0 1;
+}
+
+#stats-panel {
+    height: 1;
+    color: $text-muted;
+}
+
+#user-email {
+    width: auto;
+    color: $text;
+    text-style: bold;
+}
+
+#unread-count {
+    width: auto;
+    padding: 0 0 0 2;
+}
+
+#total-count {
+    width: auto;
+    padding: 0 0 0 2;
+}
+
+.section-title {
+    text-style: bold;
+    padding: 1 0 0 0;
+}
+
+#analyses-table {
+    height: 1fr;
+    min-height: 6;
+    margin-top: 1;
+}
+
+#new-analysis-form {
+    height: auto;
+    border: solid grey;
+    padding: 0 1;
+    margin-top: 1;
+}
+
+.form-row {
+    height: 3;
+    align: left middle;
+}
+
+.form-label {
+    width: 14;
+    color: $text-muted;
+}
+
+.form-input {
+    width: 1fr;
+}
+
+#start-analysis {
+    margin: 1 0;
+    width: 100%;
+}
+
+#dashboard-status {
+    color: $text-muted;
+    height: 1;
+}
+
+/* Analysis Screen */
+#analysis-view {
+    padding: 0 1;
+}
+
+#analysis-header {
+    height: 1;
+}
+
+#analysis-title {
+    width: auto;
+    text-style: bold;
+}
+
+#analysis-status {
+    width: auto;
+    padding: 0 0 0 2;
+    color: $text-muted;
+}
+
+#analysis-query {
+    width: 1fr;
+    color: $text-muted;
+    padding: 0 0 0 2;
+}
+
+#analysis-user {
+    width: auto;
+    color: $text-muted;
+    padding: 0 0 0 2;
+}
+
+#emails-filter-label {
+    color: $text-muted;
+    height: 1;
+}
+
+#analysis-progress {
+    margin: 1 0 0 0;
+}
+
+#progress-label {
+    color: $text-muted;
+}
+
+#analysis-tabs {
+    height: 1fr;
+    margin-top: 1;
+}
+
+#summary-table {
+    height: 1fr;
+}
+
+#emails-table {
+    height: 1fr;
+}
+
+#senders-table {
+    height: 1fr;
+}
+
+#senders-filter-label {
+    color: $text-muted;
+    height: 1;
+}
+
+#analysis-message {
+    color: $text-muted;
+    height: 1;
+}
+
+/* Email Detail Modal */
+EmailDetailScreen {
+    align: center middle;
+}
+
+#email-detail {
+    width: 72;
+    height: auto;
+    max-height: 80%;
+    padding: 1 2;
+    border: solid grey;
+    background: $surface;
+}
+
+#detail-title {
+    text-style: bold;
+    text-align: center;
+    width: 100%;
+    padding: 0 0 1 0;
+}
+
+#email-detail Label {
+    padding: 0;
+    height: 1;
+}
+
+.detail-section {
+    text-style: bold;
+    padding: 1 0 0 0;
+}
+
+#email-snippet {
+    color: $text-muted;
+    padding: 0 2;
+    height: auto;
+}
+
+#detail-hint {
+    text-align: center;
+    color: $text-muted;
+    padding: 1 0 0 0;
+}

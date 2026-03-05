@@ -18,6 +18,22 @@
 - **JSON extraction from Claude responses** — `_extract_json()` in `classification_service.py` handles markdown code fences and non-text content blocks
 - **Base categories**: `primary`, `promotions`, `social`, `updates`, `spam`, `newsletters`, `receipts` — AI can create additional categories dynamically
 - **No hard cap on email count** — the system handles thousands of emails through batched Gmail fetching (50/batch), concurrent classification (20/batch, 3 concurrent), and bulk Gmail actions (1000/batch)
+- **Unsubscribe headers stored raw** — `classified_emails.unsubscribe_header` and `unsubscribe_post_header` hold the raw `List-Unsubscribe` and `List-Unsubscribe-Post` header values from Gmail. `has_unsubscribe` remains a boolean convenience flag.
+- **Real RFC 8058 one-click unsubscribe** — when `unsubscribe` action is applied, emails with `unsubscribe_post_header` + HTTP URL in `unsubscribe_header` get an HTTP POST attempt. On success: archive (remove INBOX). On failure: fall back to mark as spam + remove INBOX. All get `action_taken="unsubscribe"`.
+- **Sender grouping** — `GET /analyses/{id}/senders?category=` returns `SenderGroupSummary` (domain, display name, count, has_unsubscribe) via `GROUP BY sender_domain` in the classified_email_repository. Stateless module `unsubscribe_service.py` has no ABC — just two functions.
+
+## TUI (Terminal UI)
+
+- **Optional dependency**: `textual` lives under `[project.optional-dependencies] tui` — backend stays lightweight
+- **Duplicate models**: `tui/models.py` mirrors `app/models/schemas.py` for decoupling (future repo split)
+- **Token persistence**: JWT saved at `~/.emailsolver/token`, loaded on startup
+- **Auth flow**: Browser OAuth → user copies JWT from JSON response → pastes in TUI Input widget
+- **Config**: `TuiConfig` with `EMAILSOLVER_TUI_` env prefix, `.env` file support
+- **Polling**: `set_interval` in AnalysisScreen while status is `pending`/`processing`, stops on `completed`/`error`
+- **Screen navigation**: LoginScreen → DashboardScreen → AnalysisScreen ↔ EmailDetailScreen (modal)
+- **AnalysisScreen has 3 tabs**: Summary → Emails → Senders. Navigation: `Tab` cycles tabs; `Enter` on Summary selects category and jumps to Emails; `g` on Emails opens Senders tab for current category; `Enter` on Senders filters Emails by sender_domain; `Escape` goes back one level (Senders→Emails→Summary→pop).
+- **Sender-scoped actions**: When on Senders tab, action keys (k/m/v/s/u) apply to `sender_domain` instead of `category`.
+- **Testing**: Textual `run_test()` + `Pilot` for screen tests; mock `httpx` for client tests
 
 ## Deployment
 
@@ -72,7 +88,16 @@ app/
   models/              # SQLAlchemy models (db.py) + Pydantic schemas (schemas.py)
   repositories/        # Data access layer
   services/            # Business logic (analysis, classification, gmail, auth)
+tui/
+  screens/             # Textual screens (login, dashboard, analysis, email_detail)
+  styles/              # Textual CSS (app.tcss)
+  app.py               # Main Textual App, token persistence
+  client.py            # Typed async httpx API client
+  models.py            # Pydantic models (mirrors app/models/schemas.py)
+  config.py            # TUI config (EMAILSOLVER_TUI_ env prefix)
+  __main__.py          # Entry point: python -m tui
 tests/                 # Pytest test suite
+  tui/                 # TUI tests (models, client, config, screens)
 alembic/               # Database migrations
 docs/                  # API reference, architecture, frontend guide
 scripts/               # Deployment + E2E test scripts (not CI)

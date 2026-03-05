@@ -83,7 +83,7 @@ Actions map to Gmail API operations:
 | `move_to_category` | `get_or_create_label(category_name)` then `modify_messages(add_labels=[label_id])` |
 | `mark_read` | `modify_messages(remove_labels=[UNREAD])` |
 | `mark_spam` | `modify_messages(add_labels=[SPAM], remove_labels=[INBOX])` |
-| `unsubscribe` | `modify_messages(add_labels=[SPAM], remove_labels=[INBOX])` |
+| `unsubscribe` | RFC 8058 HTTP POST if `unsubscribe_post_header` + HTTP URL present → archive (remove INBOX); fallback → `modify_messages(add_labels=[SPAM], remove_labels=[INBOX])` |
 
 **Gmail user labels for `move_to_category`:** Instead of using Gmail's system category labels (CATEGORY_PROMOTIONS, etc.), the system creates Gmail user labels matching the category name (e.g., `promotions`, `receipts`, `newsletters`). Labels are created on first use via `get_or_create_label` and reused on subsequent calls.
 
@@ -139,6 +139,8 @@ When `auto_apply=true` on analysis creation:
 | `sender_type` | string | human/automated/marketing/transactional |
 | `confidence` | float | 0.0-1.0 classification confidence |
 | `has_unsubscribe` | bool | Whether email has unsubscribe header |
+| `unsubscribe_header` | text | Raw `List-Unsubscribe` header value |
+| `unsubscribe_post_header` | text | Raw `List-Unsubscribe-Post` header value |
 | `action_taken` | string | Action applied (null if none) |
 | `expires_at` | datetime | TTL for cleanup (default: 7 days) |
 

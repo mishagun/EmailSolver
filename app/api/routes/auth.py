@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import RedirectResponse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.core import protocols
 from app.core.dependencies import (
@@ -9,27 +11,48 @@ from app.core.dependencies import (
     get_user_repository,
 )
 from app.models.db import User
-from app.models.schemas import AuthCallbackResponse, AuthStatusResponse, MessageResponse
+from app.models.schemas import AuthStatusResponse, MessageResponse
 
 router = APIRouter()
+
+_CALLBACK_STATE_PREFIX = "cb:"
+
+_SUCCESS_HTML = """<!DOCTYPE html>
+<html><body style="font-family:sans-serif;text-align:center;padding:60px">
+<h1>Login successful</h1>
+<p>You can close this tab and return to your application.</p>
+<pre style="margin:20px auto;padding:12px;background:#f5f5f5;border-radius:4px;max-width:600px;
+word-break:break-all;text-align:left">{token}</pre>
+</body></html>"""
 
 
 @router.get("/login")
 async def login(
+    callback_port: int | None = Query(default=None),
     auth_service: protocols.BaseAuthService = Depends(get_auth_service),
 ) -> RedirectResponse:
     auth_url = auth_service.start_authorization()
+    if callback_port is not None:
+        parsed = urlparse(auth_url)
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        params["state"] = [f"{params['state'][0]}|{_CALLBACK_STATE_PREFIX}{callback_port}"]
+        auth_url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
     return RedirectResponse(url=auth_url)
 
 
-@router.get("/callback", response_model=AuthCallbackResponse)
+@router.get("/callback")
 async def callback(
     code: str,
     state: str,
     auth_service: protocols.BaseAuthService = Depends(get_auth_service),
     security_service: protocols.BaseSecurityService = Depends(get_security_service),
     user_repo: protocols.BaseUserRepository = Depends(get_user_repository),
-) -> AuthCallbackResponse:
+) -> RedirectResponse:
+    callback_port: int | None = None
+    if f"|{_CALLBACK_STATE_PREFIX}" in state:
+        state, cb_part = state.rsplit("|", 1)
+        callback_port = int(cb_part[len(_CALLBACK_STATE_PREFIX):])
+
     credentials = auth_service.exchange_code(code=code, state=state)
 
     if not credentials or not credentials.token:
@@ -73,7 +96,17 @@ async def callback(
     user = await user_repo.save(user=user)
 
     jwt_token = security_service.create_jwt(user_id=user.id)
-    return AuthCallbackResponse(access_token=jwt_token)
+
+    if callback_port is not None:
+        return RedirectResponse(
+            url=f"http://localhost:{callback_port}/callback?token={jwt_token}"
+        )
+    return RedirectResponse(url=f"/api/v1/auth/success?token={jwt_token}")
+
+
+@router.get("/success", response_class=HTMLResponse)
+async def auth_success(token: str) -> HTMLResponse:
+    return HTMLResponse(content=_SUCCESS_HTML.format(token=token))
 
 
 @router.get("/status", response_model=AuthStatusResponse)
