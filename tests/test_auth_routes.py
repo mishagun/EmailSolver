@@ -237,6 +237,58 @@ class TestCallback:
 
         assert response.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_callback_rejects_failed_credentials(
+        self, test_client, security_service
+    ) -> None:
+        mock_credentials = MagicMock()
+        mock_credentials.token = None
+
+        mock_auth = MagicMock(spec=GoogleAuthService)
+        mock_auth.exchange_code = MagicMock(return_value=mock_credentials)
+
+        test_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth
+        )
+
+        response = await test_client.get(
+            "/api/v1/auth/callback",
+            params={"code": "auth-code", "state": "test-nonce"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 400
+        assert "Failed to obtain credentials" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_callback_tokens_encrypted_in_db(
+        self, test_client, db_session: AsyncSession, security_service
+    ) -> None:
+        mock_auth = self._mock_auth(user_info={
+            "id": "google-encrypt-check",
+            "email": "encryptcheck@example.com",
+            "name": "Encrypt Check",
+        })
+
+        test_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth
+        )
+
+        await test_client.get(
+            "/api/v1/auth/callback",
+            params={"code": "auth-code", "state": "test-nonce"},
+            follow_redirects=False,
+        )
+
+        result = await db_session.execute(
+            select(User).where(User.google_id == "google-encrypt-check")
+        )
+        user = result.scalar_one()
+        assert user.encrypted_access_token is not None
+        assert user.encrypted_access_token != "access-token"
+        assert user.encrypted_refresh_token is not None
+        assert user.encrypted_refresh_token != "refresh-token"
+
 
 class TestAuthStatus:
     @pytest.mark.asyncio
@@ -281,3 +333,24 @@ class TestLogout:
         await db_session.refresh(test_user)
         assert test_user.encrypted_access_token is None
         assert test_user.encrypted_refresh_token is None
+
+    @pytest.mark.asyncio
+    async def test_logout_clears_token_expiry(
+        self, authenticated_client, db_session: AsyncSession, test_user: User,
+        mock_auth_service: GoogleAuthService,
+    ) -> None:
+        from datetime import UTC, datetime
+
+        test_user.token_expiry = datetime(2030, 1, 1, tzinfo=UTC)
+        db_session.add(test_user)
+        await db_session.commit()
+
+        authenticated_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth_service
+        )
+
+        response = await authenticated_client.delete("/api/v1/auth/logout")
+
+        assert response.status_code == 200
+        await db_session.refresh(test_user)
+        assert test_user.token_expiry is None

@@ -86,3 +86,42 @@ class TestJWT:
 
     def test_revoke_invalid_token_no_error(self, security_service: FernetSecurityService) -> None:
         security_service.revoke_jwt(token="this-is-not-a-valid-jwt-at-all")
+
+    def test_each_jwt_has_unique_jti(self, security_service: FernetSecurityService) -> None:
+        token1 = security_service.create_jwt(user_id=1)
+        token2 = security_service.create_jwt(user_id=1)
+        payload1 = security_service.decode_jwt(token=token1)
+        payload2 = security_service.decode_jwt(token=token2)
+        assert payload1["jti"] != payload2["jti"]
+
+    def test_revoked_token_cannot_be_reused_even_after_recreation(
+        self, security_service: FernetSecurityService
+    ) -> None:
+        old_token = security_service.create_jwt(user_id=5)
+        security_service.revoke_jwt(token=old_token)
+
+        new_token = security_service.create_jwt(user_id=5)
+        payload = security_service.decode_jwt(token=new_token)
+        assert payload["sub"] == "5"
+
+        with pytest.raises(pyjwt.InvalidTokenError):
+            security_service.decode_jwt(token=old_token)
+
+    def test_denylist_cleanup_removes_expired_entries(
+        self, security_service: FernetSecurityService
+    ) -> None:
+        import time
+
+        token = security_service.create_jwt(user_id=10)
+        payload = security_service.decode_jwt(token=token)
+        jti = payload["jti"]
+
+        security_service.revoke_jwt(token=token)
+        assert jti in security_service._jwt_denylist
+
+        security_service._jwt_denylist[jti] = time.monotonic() - 1
+
+        token2 = security_service.create_jwt(user_id=11)
+        security_service.revoke_jwt(token=token2)
+
+        assert jti not in security_service._jwt_denylist

@@ -13,6 +13,12 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-05
 
+[17:00] Add comprehensive security tests for auth state store, config validators, and JWT revocation:
+- `tests/test_auth_service.py` (NEW): 10 tests covering GoogleAuthService state store — stores state on start_authorization, consumes on exchange_code (one-time use), rejects unknown/replayed state, cleans up expired entries on both start_authorization and exchange_code, verifies code_verifier passed to flow, thread safety with 10 concurrent workers.
+- `tests/test_config.py` (NEW): 13 tests covering AppConfig validators — rejects short/empty JWT secret, rejects empty fernet key, rejects invalid/asymmetric JWT algorithms (none, RS256), accepts all valid HS* algorithms and valid keys.
+- `tests/test_security.py` (MODIFY): Added 3 tests to TestJWT — unique jti per token for same user, revoked token rejected while new token for same user still works, denylist cleanup removes expired entries when new revocation triggers cleanup.
+- `tests/test_auth_routes.py` (MODIFY): Added test_callback_rejects_failed_credentials (null token returns 400), test_callback_tokens_encrypted_in_db (access/refresh tokens never stored in plaintext), test_logout_clears_token_expiry (token_expiry set to None on logout).
+
 [16:20] Fix two HIGH security vulnerabilities in TUI:
 - `tui/app.py`: `save_token` now sets `mode=0o700` on token directory and `chmod(0o600)` on token file to prevent world-readable JWT.
 - `tui/screens/login.py`: Added `_OAUTH_TIMEOUT_SECONDS = 120`. Server timeout + deadline-based async loop prevent indefinite hangs when user abandons browser flow.
