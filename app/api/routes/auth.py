@@ -16,6 +16,7 @@ from app.models.schemas import AuthStatusResponse, MessageResponse
 router = APIRouter()
 
 _CALLBACK_STATE_PREFIX = "cb:"
+_ALLOWED_PORT_RANGE = range(1024, 65536)
 
 _SUCCESS_HTML = """<!DOCTYPE html>
 <html><body style="font-family:sans-serif;text-align:center;padding:60px">
@@ -31,6 +32,8 @@ async def login(
     callback_port: int | None = Query(default=None),
     auth_service: protocols.BaseAuthService = Depends(get_auth_service),
 ) -> RedirectResponse:
+    if callback_port is not None and callback_port not in _ALLOWED_PORT_RANGE:
+        raise HTTPException(status_code=400, detail="Invalid callback port")
     auth_url = auth_service.start_authorization()
     if callback_port is not None:
         parsed = urlparse(auth_url)
@@ -53,7 +56,13 @@ async def callback(
         state, cb_part = state.rsplit("|", 1)
         callback_port = int(cb_part[len(_CALLBACK_STATE_PREFIX):])
 
-    credentials = auth_service.exchange_code(code=code, state=state)
+    if callback_port is not None and callback_port not in _ALLOWED_PORT_RANGE:
+        raise HTTPException(status_code=400, detail="Invalid callback port")
+
+    try:
+        credentials = auth_service.exchange_code(code=code, state=state)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if not credentials or not credentials.token:
         raise HTTPException(

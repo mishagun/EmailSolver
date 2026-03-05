@@ -1,4 +1,5 @@
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+import threading
+import time
 
 import httpx
 from google.oauth2.credentials import Credentials
@@ -6,8 +7,6 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 from app.core.protocols import BaseAuthService
-
-STATE_SEPARATOR = "|"
 
 
 class GoogleAuthService(BaseAuthService):
@@ -29,6 +28,9 @@ class GoogleAuthService(BaseAuthService):
         self._auth_uri = auth_uri
         self._token_uri = token_uri
         self._revoke_url = revoke_url
+        self._state_store: dict[str, tuple[str, float]] = {}
+        self._state_lock = threading.Lock()
+        self._state_ttl = 600
 
     def _build_flow(self) -> Flow:
         return Flow.from_client_config(
@@ -44,6 +46,12 @@ class GoogleAuthService(BaseAuthService):
             redirect_uri=self._redirect_uri,
         )
 
+    def _cleanup_expired(self) -> None:
+        now = time.monotonic()
+        expired = [k for k, (_, exp) in self._state_store.items() if now > exp]
+        for k in expired:
+            del self._state_store[k]
+
     def start_authorization(self) -> str:
         flow = self._build_flow()
         auth_url, state = flow.authorization_url(
@@ -51,14 +59,18 @@ class GoogleAuthService(BaseAuthService):
             include_granted_scopes="true",
             prompt="consent",
         )
-        combined_state = f"{state}{STATE_SEPARATOR}{flow.code_verifier}"
-        parsed = urlparse(auth_url)
-        params = parse_qs(parsed.query, keep_blank_values=True)
-        params["state"] = [combined_state]
-        return urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+        with self._state_lock:
+            self._cleanup_expired()
+            self._state_store[state] = (flow.code_verifier, time.monotonic() + self._state_ttl)
+        return auth_url
 
     def exchange_code(self, *, code: str, state: str) -> Credentials:
-        _, code_verifier = state.split(STATE_SEPARATOR, maxsplit=1)
+        with self._state_lock:
+            self._cleanup_expired()
+            entry = self._state_store.pop(state, None)
+        if entry is None:
+            raise ValueError("Invalid or expired OAuth state")
+        code_verifier, _ = entry
         flow = self._build_flow()
         flow.fetch_token(code=code, code_verifier=code_verifier)
         return flow.credentials

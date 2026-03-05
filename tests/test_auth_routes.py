@@ -39,6 +39,48 @@ class TestLoginRedirect:
         location = response.headers["location"]
         assert "cb%3A54321" in location or "cb:54321" in location
 
+    @pytest.mark.asyncio
+    async def test_login_rejects_privileged_port(
+        self, test_client, mock_auth_service: GoogleAuthService
+    ) -> None:
+        test_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth_service
+        )
+        response = await test_client.get(
+            "/api/v1/auth/login",
+            params={"callback_port": 80},
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_login_rejects_port_zero(
+        self, test_client, mock_auth_service: GoogleAuthService
+    ) -> None:
+        test_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth_service
+        )
+        response = await test_client.get(
+            "/api/v1/auth/login",
+            params={"callback_port": 0},
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_login_rejects_negative_port(
+        self, test_client, mock_auth_service: GoogleAuthService
+    ) -> None:
+        test_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth_service
+        )
+        response = await test_client.get(
+            "/api/v1/auth/login",
+            params={"callback_port": -1},
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
+
 
 class TestCallback:
     def _mock_auth(self, *, user_info: dict) -> MagicMock:
@@ -68,7 +110,7 @@ class TestCallback:
 
         response = await test_client.get(
             "/api/v1/auth/callback",
-            params={"code": "auth-code", "state": "csrf|verifier"},
+            params={"code": "auth-code", "state": "test-nonce"},
             follow_redirects=False,
         )
 
@@ -100,7 +142,7 @@ class TestCallback:
 
         response = await test_client.get(
             "/api/v1/auth/callback",
-            params={"code": "auth-code", "state": "csrf|verifier"},
+            params={"code": "auth-code", "state": "test-nonce"},
             follow_redirects=False,
         )
 
@@ -124,13 +166,76 @@ class TestCallback:
 
         response = await test_client.get(
             "/api/v1/auth/callback",
-            params={"code": "auth-code", "state": "csrf|verifier|cb:54321"},
+            params={"code": "auth-code", "state": "test-nonce|cb:54321"},
             follow_redirects=False,
         )
 
         assert response.status_code == 307
         location = response.headers["location"]
         assert location.startswith("http://localhost:54321/callback?token=")
+
+    @pytest.mark.asyncio
+    async def test_callback_rejects_invalid_state(
+        self, test_client, security_service
+    ) -> None:
+        mock_auth = MagicMock(spec=GoogleAuthService)
+        mock_auth.exchange_code = MagicMock(side_effect=ValueError("Invalid or expired OAuth state"))
+
+        test_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth
+        )
+
+        response = await test_client.get(
+            "/api/v1/auth/callback",
+            params={"code": "auth-code", "state": "unknown-nonce"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_callback_rejects_privileged_port(
+        self, test_client, security_service
+    ) -> None:
+        mock_auth = self._mock_auth(user_info={
+            "id": "google-bad-port-user",
+            "email": "badport@example.com",
+            "name": "Bad Port User",
+        })
+
+        test_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth
+        )
+
+        response = await test_client.get(
+            "/api/v1/auth/callback",
+            params={"code": "auth-code", "state": "test-nonce|cb:80"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_callback_rejects_port_zero(
+        self, test_client, security_service
+    ) -> None:
+        mock_auth = self._mock_auth(user_info={
+            "id": "google-zero-port-user",
+            "email": "zeroport@example.com",
+            "name": "Zero Port User",
+        })
+
+        test_client._transport.app.dependency_overrides[get_auth_service] = (
+            lambda: mock_auth
+        )
+
+        response = await test_client.get(
+            "/api/v1/auth/callback",
+            params={"code": "auth-code", "state": "test-nonce|cb:0"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 400
 
 
 class TestAuthStatus:

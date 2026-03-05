@@ -13,6 +13,11 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-05
 
+[16:00] Fix two CRITICAL OAuth security vulnerabilities:
+- `app/services/auth_service.py`: Add server-side TTL state store (`_state_store: dict[str, tuple[str, float]]`) with `threading.Lock`. `start_authorization()` now stores `nonce -> (code_verifier, expires_at)` and returns the auth_url with only the nonce in the state (no code_verifier embedded). `exchange_code()` pops the nonce from the store (one-time use) and raises `ValueError` if not found/expired. Removed URL manipulation and `STATE_SEPARATOR`.
+- `app/api/routes/auth.py`: Added `_ALLOWED_PORT_RANGE = range(1024, 65536)`. Validate `callback_port` in both `/login` (query param) and `/callback` (extracted from state) — raise HTTP 400 for ports outside the allowed range. Wrap `exchange_code()` call in try/except to surface `ValueError` as HTTP 400.
+- `tests/test_auth_routes.py`: Updated callback test states from `"csrf|verifier"` to `"test-nonce"`. Added 5 new tests: `test_login_rejects_privileged_port`, `test_login_rejects_port_zero`, `test_login_rejects_negative_port`, `test_callback_rejects_invalid_state`, `test_callback_rejects_privileged_port`, `test_callback_rejects_port_zero`.
+
 [15:30] Update auth route tests for redirect-based callback:
 - `tests/test_auth_routes.py`: Callback tests now assert on 307 redirect + location header instead of JSON. Added `test_login_embeds_callback_port_in_state`, `test_callback_with_callback_port_redirects_to_localhost`, `test_success_renders_html_with_token`. Extracted `_mock_auth` helper.
 
