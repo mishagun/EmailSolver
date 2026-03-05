@@ -36,7 +36,7 @@ test_session_maker = async_sessionmaker(test_engine, class_=AsyncSession, expire
 def security_service() -> FernetSecurityService:
     return FernetSecurityService(
         fernet_key=TEST_FERNET_KEY,
-        jwt_secret_key="test-jwt-secret",
+        jwt_secret_key="test-jwt-secret-key-at-least-32-chars-long",
         jwt_algorithm="HS256",
         jwt_expire_minutes=60,
     )

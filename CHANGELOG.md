@@ -13,6 +13,12 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-05
 
+[16:00] Fix HIGH security vulnerabilities: insecure defaults and JWT revocation:
+- `app/core/config.py`: Added `field_validator` for `jwt_secret_key` (min 32 chars), `fernet_key` (required), and `jwt_algorithm` (HS256/HS384/HS512 allowlist). Removed insecure `"change-me-to-a-random-secret"` default — startup now fails fast when secrets are not configured.
+- `app/core/security.py`: Added `jti` (UUID) claim to every JWT via `create_jwt`. `decode_jwt` checks `jti` against an in-memory denylist before returning payload. New `revoke_jwt` method adds a token's `jti` to the denylist with TTL equal to remaining token lifetime. Denylist is cleaned up on each revoke call.
+- `tests/test_security.py`: Updated local `security_service` fixture to use a 32+ char secret. Added `test_jwt_contains_jti`, `test_revoked_jwt_rejected`, `test_revoke_invalid_token_no_error`.
+- `tests/conftest.py`: Updated `security_service` fixture `jwt_secret_key` to meet new 32-char minimum.
+
 [15:30] Update auth route tests for redirect-based callback:
 - `tests/test_auth_routes.py`: Callback tests now assert on 307 redirect + location header instead of JSON. Added `test_login_embeds_callback_port_in_state`, `test_callback_with_callback_port_redirects_to_localhost`, `test_success_renders_html_with_token`. Extracted `_mock_auth` helper.
 
