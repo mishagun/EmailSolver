@@ -13,6 +13,8 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-05
 
+[16:30] Document security hardening in CLAUDE.md, docs/architecture.md, docs/api.md, docs/frontend-guide.md: OAuth state store, JWT revocation, config validation, token file permissions, port validation constraints.
+
 [16:20] Fix two HIGH security vulnerabilities in TUI:
 - `tui/app.py`: `save_token` now sets `mode=0o700` on token directory and `chmod(0o600)` on token file to prevent world-readable JWT.
 - `tui/screens/login.py`: Added `_OAUTH_TIMEOUT_SECONDS = 120`. Server timeout + deadline-based async loop prevent indefinite hangs when user abandons browser flow.

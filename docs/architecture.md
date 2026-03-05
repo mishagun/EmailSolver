@@ -148,6 +148,43 @@ Indexes: `category`, `sender_domain`, `expires_at`, `analysis_id`.
 
 ---
 
+## Security
+
+### OAuth Flow
+
+| Mechanism | Implementation |
+|-----------|---------------|
+| State nonce | `_state_store: dict[str, tuple[str, float]]` in `auth_service.py`, guarded by `threading.Lock` |
+| TTL | 10 minutes from `start_authorization`; expired entries are rejected |
+| Replay protection | `exchange_code()` pops the nonce — a second use of the same state returns 400 |
+| PKCE | `code_verifier` generated in `start_authorization`, stored server-side, never in the URL |
+| Port validation | `callback_port` must be in `range(1024, 65536)` at both `/login` and `/callback`; privileged and zero ports return 400 |
+
+### Token Encryption and JWT
+
+- **Google tokens** (access + refresh) are encrypted with Fernet before storage in the database.
+- **Session JWTs** are signed with HMAC-SHA (HS256/384/512). Every token carries a `jti` UUID claim.
+- JWT expiry is enforced on every `decode_jwt` call. `revoke_jwt` adds the `jti` to an in-memory denylist with TTL equal to the remaining token lifetime, so revoked tokens are rejected until they would have expired naturally.
+- The denylist is single-process. Multi-process deployments need a shared store (e.g., Redis).
+
+### Config Validation
+
+Validated at startup via Pydantic `field_validator` in `app/core/config.py`:
+
+| Field | Rule |
+|-------|------|
+| `jwt_secret_key` | >= 32 characters |
+| `fernet_key` | non-empty |
+| `jwt_algorithm` | one of `HS256`, `HS384`, `HS512` |
+
+The app refuses to start if any rule is violated — weak defaults cannot reach production.
+
+### TUI Token Storage
+
+`tui/app.py` `save_token()` creates `~/.emailsolver/` with `mode=0o700` and writes the token file with `chmod(0o600)`. This prevents world-readable JWTs on shared systems.
+
+---
+
 ## Repository Layer
 
 Repositories use SQLAlchemy async with two patterns:

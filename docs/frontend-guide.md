@@ -34,6 +34,11 @@ The user copies the JWT from the success page and pastes it into the application
 
 This works even when the server is deployed remotely (cloud) and the client runs locally — the final redirect to `localhost` happens in the user's browser, which resolves to the user's machine.
 
+**Security constraints for local client flow:**
+- `callback_port` must be in range **1024-65535** (unprivileged ports only). Privileged ports (0-1023) and zero return 400.
+- The OAuth state nonce expires after **10 minutes**. If the user takes longer than 10 minutes to complete the browser flow, the callback will return 400 and the login must be restarted.
+- The TUI's local HTTP server times out after **120 seconds**. On timeout, the TUI displays "login timed out" and the user must initiate login again.
+
 Store the JWT and include it in all subsequent requests:
 ```
 Authorization: Bearer <token>
