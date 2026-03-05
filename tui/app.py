@@ -1,3 +1,4 @@
+import stat
 from textual import work
 from textual.app import App
 
@@ -52,8 +53,9 @@ class EmailSolverApp(App):
 
     def save_token(self, *, token: str) -> None:
         self.client.set_token(token=token)
-        self.tui_config.token_path.parent.mkdir(parents=True, exist_ok=True)
+        self.tui_config.token_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.tui_config.token_path.write_text(token)
+        self.tui_config.token_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
     def clear_saved_token(self) -> None:
         self.client.clear_token()

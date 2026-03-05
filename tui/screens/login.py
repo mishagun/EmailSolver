@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -10,6 +11,8 @@ from textual.widgets import Button, Footer, Label, Static
 
 from tui.client import ApiError
 from tui.screens import AppScreen
+
+_OAUTH_TIMEOUT_SECONDS = 120
 
 
 class _CallbackHandler(BaseHTTPRequestHandler):
@@ -64,6 +67,7 @@ class LoginScreen(AppScreen):
 
         _CallbackHandler.token = None
         server = HTTPServer(("localhost", self.tui_config.callback_port), _CallbackHandler)
+        server.timeout = _OAUTH_TIMEOUT_SECONDS
         port = server.server_address[1]
 
         thread = threading.Thread(target=server.handle_request, daemon=True)
@@ -74,8 +78,12 @@ class LoginScreen(AppScreen):
 
         msg_label.update("waiting for login...")
 
-        import asyncio
+        deadline = asyncio.get_event_loop().time() + _OAUTH_TIMEOUT_SECONDS
         while thread.is_alive():
+            if asyncio.get_event_loop().time() > deadline:
+                server.server_close()
+                msg_label.update("login timed out — press button to try again")
+                return
             await asyncio.sleep(0.3)
 
         token = _CallbackHandler.token

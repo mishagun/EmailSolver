@@ -13,6 +13,11 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-05
 
+[16:00] Fix two HIGH security vulnerabilities in TUI:
+- `tui/app.py`: `save_token` now sets `mode=0o700` on token directory and `chmod(0o600)` on token file after writing to prevent world-readable JWT on shared systems. Added `import stat`.
+- `tui/screens/login.py`: Added `_OAUTH_TIMEOUT_SECONDS = 120` constant. `_start_oauth` sets `server.timeout = _OAUTH_TIMEOUT_SECONDS` so `handle_request` does not block indefinitely when the user abandons the browser. Added deadline-based async loop that closes the server and shows a timeout message after 120 s. Moved `import asyncio` to module level.
+- `tests/tui/test_screens.py`: Added `mock.timeout = None` to `_mock_server` to support the new `server.timeout` assignment. Added `test_save_token_sets_owner_only_permissions` to assert `0o600` file mode.
+
 [15:30] Update auth route tests for redirect-based callback:
 - `tests/test_auth_routes.py`: Callback tests now assert on 307 redirect + location header instead of JSON. Added `test_login_embeds_callback_port_in_state`, `test_callback_with_callback_port_redirects_to_localhost`, `test_success_renders_html_with_token`. Extracted `_mock_auth` helper.
 
