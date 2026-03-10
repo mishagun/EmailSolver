@@ -406,16 +406,30 @@ class TestApplyActions:
         analysis_with_classified_emails: Analysis,
         mock_analysis_service: AnalysisService,
     ) -> None:
+        # Arrange
+        mock_repo = AsyncMock()
+        mock_repo.find_by_filters = AsyncMock(
+            return_value=list(analysis_with_classified_emails.classified_emails)
+        )
         authenticated_client._transport.app.dependency_overrides[get_analysis_service] = (
             lambda: mock_analysis_service
         )
+        authenticated_client._transport.app.dependency_overrides[
+            get_classified_email_repository
+        ] = lambda: mock_repo
         aid = analysis_with_classified_emails.id
 
+        # Act
         response = await authenticated_client.post(
             f"/api/v1/analysis/{aid}/apply",
             json={"action": "mark_read"},
         )
+
+        # Assert
         assert response.status_code == 200
+        mock_repo.find_by_filters.assert_awaited_once_with(
+            analysis_id=aid, category=None, sender_domain=None,
+        )
         mock_analysis_service.apply_actions_for_analysis.assert_awaited_once()
         call_kwargs = mock_analysis_service.apply_actions_for_analysis.call_args.kwargs
         assert len(call_kwargs["classified_emails"]) == 2
