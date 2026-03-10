@@ -13,6 +13,9 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-10
 
+- [--:--] Build Docker images in CI (GHCR) instead of on EC2 — prevents OOM on t2.micro. New `build-and-push` job builds app + web images, deploy just pulls them (`deploy.yml`, `docker-compose.yml`)
+- [--:--] Add memory limits to all containers: postgres 256m, app 384m, web 64m, db-backup 64m (`docker-compose.yml`)
+- [--:--] Tune Postgres for low-memory: shared_buffers=64MB, work_mem=2MB, maintenance_work_mem=32MB (`docker-compose.yml`)
 - [--:--] Fix deploy workflow hanging again: use SCP to copy .env file instead of passing secret through SSH script (drone-ssh hangs on multiline secrets with special chars)
 - [--:--] Fix deploy workflow hanging: split .env write into separate SSH step (removes `envs` passthrough that caused drone-ssh to hang on multiline secrets), add `command_timeout: 10m` to deploy step and `30s` to env write step (`.github/workflows/deploy.yml`)
 - [--:--] Expand LoginPage with feature grid (scan/classify/act/undo descriptions) and footer matching Layout (`web/src/pages/LoginPage.tsx`)

@@ -59,9 +59,12 @@
 
 ## Deployment
 
+- **CI builds images** — GitHub Actions builds Docker images and pushes to GHCR (`ghcr.io/mishagun/emailsolver`, `ghcr.io/mishagun/emailsolver-web`). EC2 only pulls and runs, never builds.
+- `docker-compose.yml` uses `image:` from GHCR. `docker-compose.local.yml` uses `build:` for local dev.
 - `docker-compose.yml` has a `migrations` one-shot service that runs `alembic upgrade head` before the app starts
 - `alembic/env.py` overrides `sqlalchemy.url` with `DATABASE_URL` env var when set (required for Docker where DB host is `postgres`, not `localhost`)
-- `scripts/deploy.sh` — validates `.env`, builds, starts services, polls health
+- **Memory limits**: postgres 256m, app 384m, web 64m, db-backup 64m. Postgres tuned for low-memory (shared_buffers=64MB, work_mem=2MB).
+- `scripts/deploy.sh` — validates `.env`, builds, starts services, polls health (for manual local deploys)
 - `Dockerfile` includes a `HEALTHCHECK` using python urllib (no curl in slim image)
 - **Database backups**: `db-backup` service runs `pg_dump` daily, writes gzipped custom-format dumps to `./backups/` bind mount, retains last 7. Restore via `scripts/db_restore.sh <file>`. Future: add S3 sync via cron or additional service.
 

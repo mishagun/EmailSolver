@@ -4,6 +4,11 @@ on:
   push:
     branches: [master]
 
+env:
+  REGISTRY: ghcr.io
+  APP_IMAGE: ghcr.io/mishagun/emailsolver
+  WEB_IMAGE: ghcr.io/mishagun/emailsolver-web
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -62,8 +67,46 @@ jobs:
         working-directory: web
         run: npm test
 
-  deploy:
+  build-and-push:
     needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push app image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.APP_IMAGE }}:latest,${{ env.APP_IMAGE }}:${{ github.sha }}
+
+      - name: Extract DOMAIN from env file
+        run: echo "DOMAIN=$(echo "$DOCKER_ENV_FILE" | grep '^DOMAIN=' | cut -d'=' -f2-)" >> "$GITHUB_ENV"
+        env:
+          DOCKER_ENV_FILE: ${{ secrets.DOCKER_ENV_FILE }}
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: true
+          tags: ${{ env.WEB_IMAGE }}:latest,${{ env.WEB_IMAGE }}:${{ github.sha }}
+          build-args: |
+            VITE_API_BASE_URL=https://${{ env.DOMAIN }}
+            VITE_WEB_BASE_URL=https://${{ env.DOMAIN }}
+
+  deploy:
+    needs: build-and-push
     runs-on: ubuntu-latest
     steps:
       - name: Write .env file to EC2
@@ -91,12 +134,18 @@ jobs:
           script: |
             cd /opt/emailsolver
 
-            # Pull latest code
+            # Pull latest code (for docker-compose.yml updates)
             git pull origin master
 
-            # Build and deploy
-            docker compose build
+            # Log in to GHCR and pull pre-built images
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose pull
+
+            # Deploy
             docker compose up -d
+
+            # Clean up old images
+            docker image prune -f
 
             # Wait for health check
             echo "Waiting for app to be healthy..."
