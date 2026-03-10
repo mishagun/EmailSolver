@@ -5,8 +5,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -14,6 +12,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: always
 
   migrations:
     build: .
@@ -27,8 +26,6 @@ services:
 
   app:
     build: .
-    ports:
-      - "8000:8000"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -43,6 +40,26 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+    restart: always
+
+  web:
+    build:
+      context: ./web
+      args:
+        VITE_API_BASE_URL: https://${DOMAIN}
+        VITE_WEB_BASE_URL: https://${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: always
 
   db-backup:
     image: postgres:16-alpine
@@ -79,3 +96,5 @@ services:
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:

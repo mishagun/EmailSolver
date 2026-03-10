@@ -20,7 +20,7 @@ export function LoginPage() {
       }}
     >
       <div className="animate-in stagger-1" style={{ fontWeight: 700, fontSize: 48, letterSpacing: -2 }}>
-        emailsolver
+        tidyinbox
       </div>
       <div className="animate-in stagger-2 muted" style={{ fontSize: 16, marginBottom: 32 }}>
         ai-powered email classification and management
