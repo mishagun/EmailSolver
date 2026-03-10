@@ -67,17 +67,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Write .env file to EC2
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: 30s
-          script: |
-            cat > /opt/emailsolver/.env << 'ENVEOF'
-            ${{ secrets.DOCKER_ENV_FILE }}
-            ENVEOF
-            chmod 600 /opt/emailsolver/.env
+        run: |
+          install -m 600 /dev/null /tmp/.env
+          echo "$DOCKER_ENV_FILE" > /tmp/.env
+          mkdir -p ~/.ssh && install -m 600 /dev/null ~/.ssh/deploy_key
+          echo "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key /tmp/.env "${EC2_USER}@${EC2_HOST}:/opt/emailsolver/.env"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key "${EC2_USER}@${EC2_HOST}" "chmod 600 /opt/emailsolver/.env"
+          rm -f /tmp/.env ~/.ssh/deploy_key
+        env:
+          DOCKER_ENV_FILE: ${{ secrets.DOCKER_ENV_FILE }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
 
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
