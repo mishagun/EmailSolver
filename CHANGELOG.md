@@ -13,6 +13,7 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-10
 
+- [--:--] Expand LoginPage with feature grid (scan/classify/act/undo descriptions) and footer matching Layout (`web/src/pages/LoginPage.tsx`)
 - [--:--] Add `docker-compose.local.yml` — simplified local dev compose without web/caddy/db-backup, exposes postgres:5432 and app:8000 directly
 - [--:--] Change row selection color from cold blue (#e6ecff) to warm sand (#ece8d8) to match brutalist off-white aesthetic (`web/src/styles/variables.css`)
 - [19:10] Fix actions applied to entire category instead of filtered sender: replace if/elif chain in `analysis.py` route with single `find_by_filters` call that dynamically combines WHERE clauses. Add `find_by_filters` to protocol and repository. Add unit test and integration test for combined sender_domain+category filter. Add second promotions sender to fake data for test coverage.
