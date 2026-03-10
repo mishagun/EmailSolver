@@ -14,7 +14,7 @@ describe('LoginPage', () => {
     );
 
     // Assert
-    expect(screen.getByText('emailsolver')).toBeInTheDocument();
+    expect(screen.getByText('tidyinbox')).toBeInTheDocument();
     expect(screen.getByText('ai-powered email classification and management')).toBeInTheDocument();
   });
 
@@ -33,9 +33,12 @@ describe('LoginPage', () => {
   it('redirects to api login url on click', async () => {
     // Arrange
     const user = userEvent.setup();
-    const mockAssign = vi.fn();
+    let capturedHref = '';
     Object.defineProperty(window, 'location', {
-      value: { href: '', set href(v: string) { mockAssign(v); } },
+      value: {
+        get href() { return capturedHref; },
+        set href(v: string) { capturedHref = v; },
+      },
       writable: true,
       configurable: true,
     });
@@ -50,8 +53,6 @@ describe('LoginPage', () => {
     await user.click(screen.getByText('login with google'));
 
     // Assert
-    expect(mockAssign).toHaveBeenCalledWith(
-      expect.stringContaining('/api/v1/auth/login')
-    );
+    expect(capturedHref).toContain('/api/v1/auth/login');
   });
 });

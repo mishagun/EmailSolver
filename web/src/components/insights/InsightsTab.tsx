@@ -176,7 +176,7 @@ export function InsightsTab({ emails, isInboxScan, onCategoryClick }: InsightsTa
               dataKey="count"
               radius={0}
               cursor="pointer"
-              onClick={(data: { name: string }) => onCategoryClick(data.name)}
+              onClick={(data) => onCategoryClick(String(data.name))}
             >
               {categoryData.map((_, i) => (
                 <Cell key={i} fill={CATEGORY_PALETTE[i % CATEGORY_PALETTE.length]} />

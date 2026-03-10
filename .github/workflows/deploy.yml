@@ -1,0 +1,92 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run linter
+        run: uv run ruff check .
+
+      - name: Run backend tests
+        run: uv run pytest tests/ -x -q
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Run frontend type check
+        working-directory: web
+        run: npx tsc --noEmit
+
+      - name: Run frontend tests
+        working-directory: web
+        run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write env file
+        run: |
+          echo "$DOCKER_ENV_FILE" > /tmp/.env
+        env:
+          DOCKER_ENV_FILE: ${{ secrets.DOCKER_ENV_FILE }}
+
+      - name: Copy env file to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: /tmp/.env
+          target: /opt/emailsolver
+          strip_components: 1
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /opt/emailsolver
+
+            # Pull latest code
+            git pull origin master
+
+            # Build and deploy
+            docker compose build
+            docker compose up -d
+
+            # Wait for health check
+            echo "Waiting for app to be healthy..."
+            for i in $(seq 1 30); do
+              if docker compose exec -T app python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"; then
+                echo "Deploy successful!"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "Health check failed"
+            docker compose logs app --tail 50
+            exit 1

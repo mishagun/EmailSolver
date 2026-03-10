@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { InsightsTab } from './InsightsTab';
 import { mockEmail, mockEmail2 } from '../../test/fixtures';
 import type { ClassifiedEmail } from '../../api/types';
