@@ -2,7 +2,6 @@
 import subprocess
 import sys
 import webbrowser
-
 from pathlib import Path
 
 import httpx
@@ -44,7 +43,7 @@ def run() -> None:
         sys.exit(1)
 
     # Step 2: Health check
-    print(f"\n[2/7] Checking server health...")
+    print("\n[2/7] Checking server health...")
     try:
         resp = httpx.get(f"{BASE_URL}/health", timeout=5)
     except httpx.ConnectError:

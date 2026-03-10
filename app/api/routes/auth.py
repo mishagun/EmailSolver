@@ -37,9 +37,10 @@ async def login(
 ) -> RedirectResponse:
     if callback_port is not None and callback_port not in _ALLOWED_PORT_RANGE:
         raise HTTPException(status_code=400, detail="Invalid callback port")
-    if redirect_url is not None:
-        if not config.web_app_url or not redirect_url.startswith(config.web_app_url):
-            raise HTTPException(status_code=400, detail="Invalid redirect URL")
+    if redirect_url is not None and (
+        not config.web_app_url or not redirect_url.startswith(config.web_app_url)
+    ):
+        raise HTTPException(status_code=400, detail="Invalid redirect URL")
     auth_url = auth_service.start_authorization()
     parsed = urlparse(auth_url)
     params = parse_qs(parsed.query, keep_blank_values=True)

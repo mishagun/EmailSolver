@@ -4,7 +4,6 @@ import pytest
 
 from app.models.db import ClassifiedEmail
 from app.models.schemas import (
-    AnalysisType,
     CategoryMerge,
     ClassificationResult,
     EmailMetadata,

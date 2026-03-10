@@ -8,7 +8,6 @@ from googleapiclient.discovery import build
 from app.core.protocols import BaseEmailService
 from app.models.schemas import EmailMetadata
 
-
 GMAIL_CATEGORY_MAP = {
     "CATEGORY_SOCIAL": "social",
     "CATEGORY_PROMOTIONS": "promotions",

@@ -9,13 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import analysis, auth, emails
 from app.core.config import config
-from app.core.logging import setup_logging
-
-setup_logging(log_level=config.log_level)
 from app.core.database import async_session_maker
+from app.core.logging import setup_logging
 from app.models.schemas import HealthResponse
 from app.repositories.classified_email_repository import SQLAlchemyClassifiedEmailRepository
 from app.services.cleanup_service import CleanupService
+
+setup_logging(log_level=config.log_level)
 
 
 @asynccontextmanager

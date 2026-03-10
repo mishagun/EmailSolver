@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
+import contextlib
 import subprocess
 import sys
 import time
 import webbrowser
-
 from pathlib import Path
 
 import httpx
@@ -218,10 +218,8 @@ def run() -> None:
 
 def _logout_and_exit(*, headers: dict[str, str]) -> None:
     print("\n  Logging out before exit...")
-    try:
+    with contextlib.suppress(Exception):
         httpx.delete(f"{API}/auth/logout", headers=headers, timeout=10)
-    except Exception:
-        pass
     sys.exit(1)
 
 

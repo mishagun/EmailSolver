@@ -179,7 +179,9 @@ class TestCallback:
         self, test_client, security_service
     ) -> None:
         mock_auth = MagicMock(spec=GoogleAuthService)
-        mock_auth.exchange_code = MagicMock(side_effect=ValueError("Invalid or expired OAuth state"))
+        mock_auth.exchange_code = MagicMock(
+            side_effect=ValueError("Invalid or expired OAuth state")
+        )
 
         test_client._transport.app.dependency_overrides[get_auth_service] = (
             lambda: mock_auth

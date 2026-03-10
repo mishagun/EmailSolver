@@ -69,7 +69,8 @@ def _extract_json(response: Message) -> str:
                 return text
     block_types = [b.type for b in response.content]
     raise ValueError(
-        f"No text content in API response (stop_reason={response.stop_reason}, blocks={block_types})"
+        f"No text content in API response "
+        f"(stop_reason={response.stop_reason}, blocks={block_types})"
     )
 
 

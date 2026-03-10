@@ -81,8 +81,10 @@ class TestExchangeCode:
         with patch.object(auth_service, "_build_flow", return_value=flow_mock):
             auth_service.exchange_code(code="auth-code", state="nonce123")
 
-        with pytest.raises(ValueError, match="Invalid or expired OAuth state"):
-            with patch.object(auth_service, "_build_flow", return_value=flow_mock):
+        with (
+            pytest.raises(ValueError, match="Invalid or expired OAuth state"),
+            patch.object(auth_service, "_build_flow", return_value=flow_mock),
+        ):
                 auth_service.exchange_code(code="auth-code", state="nonce123")
 
     def test_exchange_code_passes_verifier_to_flow(self, auth_service: GoogleAuthService) -> None:
