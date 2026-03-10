@@ -42,6 +42,7 @@ jobs:
           JWT_SECRET_KEY: test-secret-key-that-is-at-least-32-chars
           FERNET_KEY: kOmnJJbddZ_wLey3GOjF6SPPQhse-Q2wUGNh_rbDqpM=
           ANTHROPIC_API_KEY: test-key
+          DATABASE_URL: postgresql+asyncpg://emailsolver:emailsolver@localhost:5432/emailsolver_test
           TEST_DATABASE_URL: postgresql+asyncpg://emailsolver:emailsolver@localhost:5432/emailsolver_test
 
       - name: Set up Node.js
