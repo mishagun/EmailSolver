@@ -7,6 +7,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: emailsolver
+          POSTGRES_PASSWORD: emailsolver
+          POSTGRES_DB: emailsolver_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U emailsolver"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +42,7 @@ jobs:
           JWT_SECRET_KEY: test-secret-key-that-is-at-least-32-chars
           FERNET_KEY: kOmnJJbddZ_wLey3GOjF6SPPQhse-Q2wUGNh_rbDqpM=
           ANTHROPIC_API_KEY: test-key
+          TEST_DATABASE_URL: postgresql+asyncpg://emailsolver:emailsolver@localhost:5432/emailsolver_test
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
