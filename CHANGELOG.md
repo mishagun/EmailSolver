@@ -13,6 +13,7 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-10
 
+- [--:--] Fix deploy workflow hanging: split .env write into separate SSH step (removes `envs` passthrough that caused drone-ssh to hang on multiline secrets), add `command_timeout: 10m` to deploy step and `30s` to env write step (`.github/workflows/deploy.yml`)
 - [--:--] Expand LoginPage with feature grid (scan/classify/act/undo descriptions) and footer matching Layout (`web/src/pages/LoginPage.tsx`)
 - [--:--] Add `docker-compose.local.yml` — simplified local dev compose without web/caddy/db-backup, exposes postgres:5432 and app:8000 directly
 - [--:--] Change row selection color from cold blue (#e6ecff) to warm sand (#ece8d8) to match brutalist off-white aesthetic (`web/src/styles/variables.css`)

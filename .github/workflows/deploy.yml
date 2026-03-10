@@ -66,19 +66,28 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
+      - name: Write .env file to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 30s
+          script: |
+            cat > /opt/emailsolver/.env << 'ENVEOF'
+            ${{ secrets.DOCKER_ENV_FILE }}
+            ENVEOF
+            chmod 600 /opt/emailsolver/.env
+
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DOCKER_ENV_FILE
+          command_timeout: 10m
           script: |
             cd /opt/emailsolver
-
-            # Write env file
-            printf '%s\n' "$DOCKER_ENV_FILE" > .env
-            chmod 600 .env
 
             # Pull latest code
             git pull origin master
@@ -99,5 +108,3 @@ jobs:
             echo "Health check failed"
             docker compose logs app --tail 50
             exit 1
-        env:
-          DOCKER_ENV_FILE: ${{ secrets.DOCKER_ENV_FILE }}
