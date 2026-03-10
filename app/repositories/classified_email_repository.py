@@ -108,6 +108,24 @@ class SQLAlchemyClassifiedEmailRepository(BaseClassifiedEmailRepository):
             )
             return list(result.scalars().all())
 
+    async def find_by_filters(
+        self,
+        *,
+        analysis_id: int,
+        category: str | None = None,
+        sender_domain: str | None = None,
+    ) -> list[ClassifiedEmail]:
+        async with self._session_maker() as session:
+            query = select(ClassifiedEmail).where(
+                ClassifiedEmail.analysis_id == analysis_id
+            )
+            if category is not None:
+                query = query.where(ClassifiedEmail.category == category)
+            if sender_domain is not None:
+                query = query.where(ClassifiedEmail.sender_domain == sender_domain)
+            result = await session.execute(query)
+            return list(result.scalars().all())
+
     async def bulk_update_action_taken(
         self, *, email_ids: list[int], action_taken: str | None
     ) -> None:

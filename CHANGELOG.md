@@ -13,6 +13,9 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-10
 
+- [--:--] Add `docker-compose.local.yml` — simplified local dev compose without web/caddy/db-backup, exposes postgres:5432 and app:8000 directly
+- [--:--] Change row selection color from cold blue (#e6ecff) to warm sand (#ece8d8) to match brutalist off-white aesthetic (`web/src/styles/variables.css`)
+- [19:10] Fix actions applied to entire category instead of filtered sender: replace if/elif chain in `analysis.py` route with single `find_by_filters` call that dynamically combines WHERE clauses. Add `find_by_filters` to protocol and repository. Add unit test and integration test for combined sender_domain+category filter. Add second promotions sender to fake data for test coverage.
 - [17:59] Redesign favicon: solid black envelope with off-white fold lines, no checkmark and link in index.html (`web/public/favicon.svg`, `web/index.html`)
 - [17:56] Fix footer links to inherit color instead of default blue, add MIT LICENSE file
 - [17:54] Add footer to Layout with "developed by mike feldman" + LinkedIn and GitHub links (`web/src/components/Layout.tsx`)

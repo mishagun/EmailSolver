@@ -219,16 +219,12 @@ async def apply_actions(
         emails = await classified_email_repo.find_by_ids_and_analysis(
             email_ids=request.email_ids, analysis_id=analysis_id
         )
-    elif request.category is not None:
-        emails = await classified_email_repo.find_by_category_and_analysis(
-            category=request.category, analysis_id=analysis_id
-        )
-    elif request.sender_domain is not None:
-        emails = await classified_email_repo.find_by_sender_domain_and_analysis(
-            sender_domain=request.sender_domain, analysis_id=analysis_id
-        )
     else:
-        emails = list(analysis.classified_emails)
+        emails = await classified_email_repo.find_by_filters(
+            analysis_id=analysis_id,
+            category=request.category,
+            sender_domain=request.sender_domain,
+        )
 
     await analysis_service.apply_actions_for_analysis(
         classified_emails=emails,

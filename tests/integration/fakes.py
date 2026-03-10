@@ -53,6 +53,15 @@ DEFAULT_FAKE_EMAILS = [
         subject="Meeting tomorrow",
         snippet="Let's discuss the project...",
     ),
+    EmailMetadata(
+        gmail_message_id="msg-5",
+        gmail_thread_id="thread-5",
+        sender="sales@otherpromo.com",
+        sender_domain="otherpromo.com",
+        subject="Flash sale today!",
+        snippet="Limited time offer on all items...",
+        has_unsubscribe=True,
+    ),
 ]
 
 DOMAIN_CATEGORY_MAP: dict[str, str] = {
@@ -60,6 +69,7 @@ DOMAIN_CATEGORY_MAP: dict[str, str] = {
     "promo.com": "promotions",
     "social.com": "social",
     "updates.com": "updates",
+    "otherpromo.com": "promotions",
 }
 
 

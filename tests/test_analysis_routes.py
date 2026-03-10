@@ -310,26 +310,29 @@ class TestApplyActions:
         analysis_with_classified_emails: Analysis,
         mock_analysis_service: AnalysisService,
     ) -> None:
+        # Arrange
         mock_repo = AsyncMock()
-        mock_repo.find_by_category_and_analysis = AsyncMock(
+        mock_repo.find_by_filters = AsyncMock(
             return_value=list(analysis_with_classified_emails.classified_emails)
         )
-
         authenticated_client._transport.app.dependency_overrides[get_analysis_service] = (
             lambda: mock_analysis_service
         )
         authenticated_client._transport.app.dependency_overrides[
             get_classified_email_repository
         ] = lambda: mock_repo
-
         aid = analysis_with_classified_emails.id
+
+        # Act
         response = await authenticated_client.post(
             f"/api/v1/analysis/{aid}/apply",
             json={"action": "move_to_category", "category": "promotions"},
         )
+
+        # Assert
         assert response.status_code == 200
-        mock_repo.find_by_category_and_analysis.assert_awaited_once_with(
-            category="promotions", analysis_id=aid
+        mock_repo.find_by_filters.assert_awaited_once_with(
+            analysis_id=aid, category="promotions", sender_domain=None,
         )
 
     @pytest.mark.asyncio
@@ -339,26 +342,61 @@ class TestApplyActions:
         analysis_with_classified_emails: Analysis,
         mock_analysis_service: AnalysisService,
     ) -> None:
+        # Arrange
         mock_repo = AsyncMock()
-        mock_repo.find_by_sender_domain_and_analysis = AsyncMock(
+        mock_repo.find_by_filters = AsyncMock(
             return_value=list(analysis_with_classified_emails.classified_emails)
         )
-
         authenticated_client._transport.app.dependency_overrides[get_analysis_service] = (
             lambda: mock_analysis_service
         )
         authenticated_client._transport.app.dependency_overrides[
             get_classified_email_repository
         ] = lambda: mock_repo
-
         aid = analysis_with_classified_emails.id
+
+        # Act
         response = await authenticated_client.post(
             f"/api/v1/analysis/{aid}/apply",
             json={"action": "mark_spam", "sender_domain": "example.com"},
         )
+
+        # Assert
         assert response.status_code == 200
-        mock_repo.find_by_sender_domain_and_analysis.assert_awaited_once_with(
-            sender_domain="example.com", analysis_id=aid
+        mock_repo.find_by_filters.assert_awaited_once_with(
+            analysis_id=aid, category=None, sender_domain="example.com",
+        )
+
+    @pytest.mark.asyncio
+    async def test_apply_by_sender_domain_and_category(
+        self,
+        authenticated_client,
+        analysis_with_classified_emails: Analysis,
+        mock_analysis_service: AnalysisService,
+    ) -> None:
+        # Arrange
+        mock_repo = AsyncMock()
+        mock_repo.find_by_filters = AsyncMock(
+            return_value=list(analysis_with_classified_emails.classified_emails)
+        )
+        authenticated_client._transport.app.dependency_overrides[get_analysis_service] = (
+            lambda: mock_analysis_service
+        )
+        authenticated_client._transport.app.dependency_overrides[
+            get_classified_email_repository
+        ] = lambda: mock_repo
+        aid = analysis_with_classified_emails.id
+
+        # Act
+        response = await authenticated_client.post(
+            f"/api/v1/analysis/{aid}/apply",
+            json={"action": "mark_spam", "sender_domain": "example.com", "category": "promotions"},
+        )
+
+        # Assert
+        assert response.status_code == 200
+        mock_repo.find_by_filters.assert_awaited_once_with(
+            analysis_id=aid, category="promotions", sender_domain="example.com",
         )
 
     @pytest.mark.asyncio

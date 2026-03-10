@@ -147,6 +147,58 @@ async def test_apply_actions_on_incomplete_analysis_fails(
     assert apply_response.status_code == 400
 
 
+async def test_apply_action_to_sender_within_category(
+    authenticated_integration_client: AsyncClient,
+    fake_email_service: FakeEmailService,
+) -> None:
+    # Arrange
+    client = authenticated_integration_client
+    analysis_id = await _create_completed_analysis(client=client)
+
+    get_response = await client.get(f"/api/v1/analysis/{analysis_id}")
+    classified = get_response.json()["classified_emails"]
+    promo_emails = [e for e in classified if e["category"] == "promotions"]
+    promo_com_emails = [e for e in promo_emails if e["sender_domain"] == "promo.com"]
+    other_promo_emails = [e for e in promo_emails if e["sender_domain"] != "promo.com"]
+    assert len(promo_com_emails) >= 1
+    assert len(other_promo_emails) >= 1
+
+    fake_email_service.modify_calls.clear()
+
+    # Act
+    response = await client.post(
+        f"/api/v1/analysis/{analysis_id}/apply",
+        json={
+            "action": "mark_read",
+            "sender_domain": "promo.com",
+            "category": "promotions",
+        },
+    )
+
+    # Assert
+    assert response.status_code == 200
+
+    all_modified_msg_ids: list[str] = []
+    for call in fake_email_service.modify_calls:
+        all_modified_msg_ids.extend(call["message_ids"])
+    assert len(all_modified_msg_ids) == len(promo_com_emails)
+
+    async with test_session_maker() as session:
+        all_promo = (
+            await session.execute(
+                select(ClassifiedEmail).where(
+                    ClassifiedEmail.analysis_id == analysis_id,
+                    ClassifiedEmail.category == "promotions",
+                )
+            )
+        ).scalars().all()
+        for email in all_promo:
+            if email.sender_domain == "promo.com":
+                assert email.action_taken == "mark_read"
+            else:
+                assert email.action_taken is None
+
+
 async def test_apply_keep_action_does_not_modify_gmail(
     authenticated_integration_client: AsyncClient,
     fake_email_service: FakeEmailService,

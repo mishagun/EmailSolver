@@ -196,6 +196,15 @@ class BaseClassifiedEmailRepository(ABC):
     ) -> None: ...
 
     @abstractmethod
+    async def find_by_filters(
+        self,
+        *,
+        analysis_id: int,
+        category: str | None = None,
+        sender_domain: str | None = None,
+    ) -> list[ClassifiedEmail]: ...
+
+    @abstractmethod
     async def pop_last_action(
         self, *, email_ids: list[int]
     ) -> dict[int, str | None]: ...
