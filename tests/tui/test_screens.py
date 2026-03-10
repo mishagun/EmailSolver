@@ -390,7 +390,7 @@ class TestEmailDetailScreen:
         )
         app = _NoAuthApp(config=_make_config(tmp_path))
         async with app.run_test() as pilot:
-            await app.push_screen(EmailDetailScreen(email=email))
+            await app.push_screen(EmailDetailScreen(email=email, analysis_id=1))
             await pilot.pause()
 
             detail = app.screen.query_one("#email-detail")

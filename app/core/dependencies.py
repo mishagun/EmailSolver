@@ -43,16 +43,19 @@ def get_email_service() -> protocols.BaseEmailService:
     )
 
 
+_auth_service = GoogleAuthService(
+    client_id=config.google_client_id,
+    client_secret=config.google_client_secret,
+    redirect_uri=config.google_redirect_uri,
+    scopes=GOOGLE_SCOPES,
+    auth_uri=config.google_auth_uri,
+    token_uri=config.google_token_uri,
+    revoke_url=config.google_revoke_url,
+)
+
+
 def get_auth_service() -> protocols.BaseAuthService:
-    return GoogleAuthService(
-        client_id=config.google_client_id,
-        client_secret=config.google_client_secret,
-        redirect_uri=config.google_redirect_uri,
-        scopes=GOOGLE_SCOPES,
-        auth_uri=config.google_auth_uri,
-        token_uri=config.google_token_uri,
-        revoke_url=config.google_revoke_url,
-    )
+    return _auth_service
 
 
 def get_user_repository(

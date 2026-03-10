@@ -27,16 +27,18 @@ from tui.screens.email_detail import EmailDetailScreen
 class AnalysisScreen(AppScreen):
     BINDINGS = [
         Binding("escape", "go_back", "Back", priority=True),
-        Binding("tab", "switch_tab", "Switch Tab", priority=True),
-        ("r", "refresh", "Refresh"),
-        ("d", "delete", "Delete"),
-        ("k", "keep", "Keep"),
-        ("m", "mark_read", "Mark Read"),
-        ("v", "move", "Move"),
-        ("s", "spam", "Spam"),
-        ("a", "show_all", "All Emails"),
-        ("g", "senders", "By Sender"),
-        ("u", "unsubscribe", "Unsubscribe"),
+        Binding("tab", "switch_tab", "Tab", priority=True),
+        Binding("r", "refresh", "Refresh"),
+        Binding("d", "delete", "Delete"),
+        Binding("a", "show_all", "All"),
+        Binding("g", "senders", "Senders"),
+        Binding("k", "keep", "Keep"),
+        Binding("m", "mark_read", "Read"),
+        Binding("v", "move", "Move"),
+        Binding("s", "spam", "Spam"),
+        Binding("u", "unsubscribe", "Unsub"),
+        Binding("space", "toggle_select", "Select", show=False),
+        Binding("x", "clear_selection", "Clear", show=False),
     ]
 
     def __init__(self, *, analysis_id: int) -> None:
@@ -48,6 +50,8 @@ class AnalysisScreen(AppScreen):
         self._email_filter: str | None = None
         self._selected_sender_domain: str | None = None
         self._sender_groups: list[SenderGroupSummary] = []
+        self._selected_email_ids: set[int] = set()
+        self._sel_col_key: str | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="analysis-view"):
@@ -68,6 +72,7 @@ class AnalysisScreen(AppScreen):
                     yield Label("", id="senders-filter-label")
                     yield DataTable(id="senders-table")
             yield Label("", id="analysis-message")
+            yield Static("", id="action-scope-bar")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -76,7 +81,10 @@ class AnalysisScreen(AppScreen):
         summary_table.cursor_type = "row"
 
         emails_table = self.query_one("#emails-table", DataTable)
-        emails_table.add_columns("Sender", "Subject", "Category", "Imp.", "Type", "Action")
+        col_keys = emails_table.add_columns(
+            " ", "Sender", "Subject", "Category", "Priority", "Action"
+        )
+        self._sel_col_key = col_keys[0]
         emails_table.cursor_type = "row"
 
         senders_table = self.query_one("#senders-table", DataTable)
@@ -95,13 +103,29 @@ class AnalysisScreen(AppScreen):
         elif event.pane.id == "tab-emails":
             self.query_one("#emails-table", DataTable).focus()
         elif event.pane.id == "tab-senders":
-            if self._email_filter:
-                self._load_sender_groups()
-            else:
-                self.query_one("#senders-filter-label", Label).update(
-                    "select a category first (Enter on Summary table)"
-                )
+            self._load_sender_groups()
             self.query_one("#senders-table", DataTable).focus()
+        self._update_scope_bar()
+
+    def _update_scope_bar(self) -> None:
+        bar = self.query_one("#action-scope-bar", Static)
+        tabs = self.query_one("#analysis-tabs", TabbedContent)
+        if tabs.active == "tab-summary":
+            cat = self._selected_category or "all"
+            bar.update(f"actions apply to: category [{cat}]")
+        elif tabs.active == "tab-emails":
+            n = len(self._selected_email_ids)
+            if n:
+                bar.update(
+                    f"actions apply to: {n} selected  [Space] toggle  [x] clear"
+                )
+            else:
+                bar.update(
+                    "actions apply to: highlighted email  [Space] to select multiple"
+                )
+        elif tabs.active == "tab-senders":
+            domain = self._selected_sender_domain or "all"
+            bar.update(f"actions apply to: sender [{domain}]")
 
     def _start_polling(self) -> None:
         if self._poll_timer is None:
@@ -187,6 +211,7 @@ class AnalysisScreen(AppScreen):
         emails_table = self.query_one("#emails-table", DataTable)
         filter_label = self.query_one("#emails-filter-label", Label)
         emails_table.clear()
+        self._selected_email_ids.clear()
 
         emails = self._analysis.classified_emails
         if self._email_filter:
@@ -203,28 +228,25 @@ class AnalysisScreen(AppScreen):
         filter_label.update(f"showing: {filter_text} ({len(emails)} emails)")
 
         for email in emails:
-            importance = "*" * (email.importance or 0)
             emails_table.add_row(
-                email.sender or "",
-                (email.subject or "")[:60],
+                " ",
+                (email.sender or "")[:25],
+                (email.subject or "")[:40],
                 email.category or "",
-                importance,
-                email.sender_type or "",
+                str(email.importance or 0),
                 email.action_taken or "--",
                 key=str(email.id),
             )
 
+        self._update_scope_bar()
+
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.data_table.id == "summary-table" and event.row_key and event.row_key.value:
             self._selected_category = event.row_key.value
-            self.query_one("#analysis-message", Label).update(
-                f"scope: {self._selected_category}"
-            )
+            self._update_scope_bar()
         elif event.data_table.id == "senders-table" and event.row_key and event.row_key.value:
             self._selected_sender_domain = event.row_key.value
-            self.query_one("#analysis-message", Label).update(
-                f"scope: sender {self._selected_sender_domain}"
-            )
+            self._update_scope_bar()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         if event.data_table.id == "summary-table" and event.row_key and event.row_key.value:
@@ -243,7 +265,15 @@ class AnalysisScreen(AppScreen):
                     None,
                 )
                 if email:
-                    self.app.push_screen(EmailDetailScreen(email=email))
+                    self.app.push_screen(
+                        EmailDetailScreen(
+                            email=email, analysis_id=self.analysis_id
+                        ),
+                        callback=self._on_email_detail_dismiss,
+                    )
+
+    def _on_email_detail_dismiss(self, _result: None) -> None:
+        self._update_emails_table()
 
     def action_switch_tab(self) -> None:
         tabs = self.query_one("#analysis-tabs", TabbedContent)
@@ -258,6 +288,45 @@ class AnalysisScreen(AppScreen):
         self._email_filter = None
         self._selected_sender_domain = None
         self._update_emails_table()
+
+    def action_toggle_select(self) -> None:
+        tabs = self.query_one("#analysis-tabs", TabbedContent)
+        if tabs.active != "tab-emails":
+            return
+        table = self.query_one("#emails-table", DataTable)
+        if table.row_count == 0:
+            return
+        row_key = table.get_row_at(table.cursor_row)
+        if row_key is None:
+            return
+        email_id = int(row_key.value)
+        if email_id in self._selected_email_ids:
+            self._selected_email_ids.discard(email_id)
+            table.update_cell(row_key, self._sel_col_key, " ")
+        else:
+            self._selected_email_ids.add(email_id)
+            table.update_cell(row_key, self._sel_col_key, ">")
+        self._update_scope_bar()
+
+    def action_clear_selection(self) -> None:
+        if not self._selected_email_ids:
+            return
+        table = self.query_one("#emails-table", DataTable)
+        for row_key in table.rows:
+            table.update_cell(row_key, self._sel_col_key, " ")
+        self._selected_email_ids.clear()
+        self._update_scope_bar()
+
+    def _get_target_email_ids(self) -> list[int]:
+        if self._selected_email_ids:
+            return list(self._selected_email_ids)
+        table = self.query_one("#emails-table", DataTable)
+        if table.row_count == 0:
+            return []
+        row_key = table.get_row_at(table.cursor_row)
+        if row_key and row_key.value:
+            return [int(row_key.value)]
+        return []
 
     def action_keep(self) -> None:
         self.apply_action(action=ActionType.KEEP)
@@ -275,22 +344,16 @@ class AnalysisScreen(AppScreen):
         self.apply_action(action=ActionType.UNSUBSCRIBE)
 
     def action_senders(self) -> None:
-        if not self._email_filter:
-            self.query_one("#analysis-message", Label).update(
-                "select a category first (Enter on Summary table)"
-            )
-            return
         self._load_sender_groups()
         self.query_one("#analysis-tabs", TabbedContent).active = "tab-senders"
 
     @work(exclusive=True, group="senders")
     async def _load_sender_groups(self) -> None:
-        if not self._email_filter:
-            return
         msg_label = self.query_one("#analysis-message", Label)
         try:
             self._sender_groups = await self.client.get_sender_groups(
-                analysis_id=self.analysis_id, category=self._email_filter
+                analysis_id=self.analysis_id,
+                category=self._email_filter,
             )
             self._update_senders_table()
         except Exception as e:
@@ -301,8 +364,9 @@ class AnalysisScreen(AppScreen):
         filter_label = self.query_one("#senders-filter-label", Label)
         senders_table.clear()
 
+        scope = self._email_filter or "all categories"
         filter_label.update(
-            f"senders in: {self._email_filter} ({len(self._sender_groups)} senders)"
+            f"senders in: {scope} ({len(self._sender_groups)} senders)"
         )
 
         for group in self._sender_groups:
@@ -328,6 +392,16 @@ class AnalysisScreen(AppScreen):
                 sender_domain=self._selected_sender_domain,
             )
             scope = f"sender {self._selected_sender_domain}"
+        elif tabs.active == "tab-emails":
+            email_ids = self._get_target_email_ids()
+            if not email_ids:
+                msg_label.update("no email selected")
+                return
+            request = ApplyActionsRequest(
+                action=action,
+                email_ids=email_ids,
+            )
+            scope = f"{len(email_ids)} email(s)"
         else:
             request = ApplyActionsRequest(
                 action=action,
@@ -343,6 +417,7 @@ class AnalysisScreen(AppScreen):
                 request=request,
             )
             msg_label.update(f"{result.message} ({action.value} on {scope})")
+            self._selected_email_ids.clear()
             await self._fetch_and_update()
         except ApiError as e:
             msg_label.update(f"error: {e.detail}")

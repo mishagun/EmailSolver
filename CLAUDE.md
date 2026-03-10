@@ -37,6 +37,9 @@
 - **Screen navigation**: LoginScreen → DashboardScreen → AnalysisScreen ↔ EmailDetailScreen (modal)
 - **AnalysisScreen has 3 tabs**: Summary → Emails → Senders. Navigation: `Tab` cycles tabs; `Enter` on Summary selects category and jumps to Emails; `g` on Emails opens Senders tab for current category; `Enter` on Senders filters Emails by sender_domain; `Escape` goes back one level (Senders→Emails→Summary→pop).
 - **Sender-scoped actions**: When on Senders tab, action keys (k/m/v/s/u) apply to `sender_domain` instead of `category`.
+- **Per-email actions in detail modal**: `EmailDetailScreen` takes `analysis_id` kwarg, has k/m/v/s/u keybindings that call `apply_actions(email_ids=[self.email.id])`. Mutates shared `email.action_taken` reference. `AppModalScreen` has `client` property.
+- **Contextual help bar**: `#action-help-bar` Static widget docked above Footer, content updates via `_update_help_bar()` on tab change. Action keys hidden from Footer with `show=False`.
+- **Senders without category**: `category` is optional (`str | None = None`) throughout — protocol, repository, route, client, screen. When `None`, senders tab shows all senders across categories.
 - **Testing**: Textual `run_test()` + `Pilot` for screen tests; mock `httpx` for client tests
 
 ## Deployment

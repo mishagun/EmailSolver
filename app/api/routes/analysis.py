@@ -164,7 +164,7 @@ def _build_summary(
 @router.get("/{analysis_id}/senders", response_model=list[SenderGroupSummary])
 async def get_sender_groups(
     analysis_id: int,
-    category: str,
+    category: str | None = None,
     user: User = Depends(get_current_user),
     analysis_repo: protocols.BaseAnalysisRepository = Depends(get_analysis_repository),
     classified_email_repo: protocols.BaseClassifiedEmailRepository = Depends(

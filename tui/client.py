@@ -115,12 +115,15 @@ class EmailSolverClient:
         return MessageResponse.model_validate(resp.json())
 
     async def get_sender_groups(
-        self, *, analysis_id: int, category: str
+        self, *, analysis_id: int, category: str | None = None
     ) -> list[SenderGroupSummary]:
+        params: dict[str, str] = {}
+        if category is not None:
+            params["category"] = category
         resp = await self._request(
             method="GET",
             path=f"/api/v1/analysis/{analysis_id}/senders",
-            params={"category": category},
+            params=params or None,
         )
         return [SenderGroupSummary.model_validate(item) for item in resp.json()]
 

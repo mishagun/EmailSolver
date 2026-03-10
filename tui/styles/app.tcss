@@ -108,6 +108,7 @@ Screen {
 /* Analysis Screen */
 #analysis-view {
     padding: 0 1;
+    overflow-x: hidden;
 }
 
 #analysis-header {
@@ -183,7 +184,8 @@ EmailDetailScreen {
 }
 
 #email-detail {
-    width: 72;
+    width: 90%;
+    max-width: 80;
     height: auto;
     max-height: 80%;
     padding: 1 2;
@@ -217,5 +219,16 @@ EmailDetailScreen {
 #detail-hint {
     text-align: center;
     color: $text-muted;
-    padding: 1 0 0 0;
+}
+
+#detail-status {
+    color: $accent;
+    text-align: center;
+    height: 1;
+}
+
+#action-scope-bar {
+    height: 1;
+    color: $accent;
+    text-align: center;
 }

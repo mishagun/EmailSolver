@@ -13,11 +13,26 @@ All notable changes to EmailSolver are documented here.
 
 ## 2026-03-05
 
+[20:30] Fix OAuth "Invalid or expired OAuth state" bug — `get_auth_service()` in `dependencies.py` was creating a new `GoogleAuthService` instance per request, so the state stored during `/login` was lost by the time `/callback` fired. Made the auth service a module-level singleton (`_auth_service`) so the in-memory state store persists across requests.
+
+[20:00] TUI UX improvements — 4 issues addressed:
+- Issue 4: Make `category` optional in senders stack — `protocols.py`, `classified_email_repository.py`, `analysis.py` (route), `client.py`, `analysis.py` (screen) all accept `category: str | None = None`. Senders tab now loads all senders when no category selected.
+- Issue 2: Per-email actions in `EmailDetailScreen` — rewrite with k/m/v/s/u keybindings, `analysis_id` parameter, `_apply_action()` worker, `#detail-status` feedback widget. `AppModalScreen` gains `client` property.
+- Issue 1: Crowded footer — action keys hidden from Footer (`show=False`), new `#action-help-bar` Static widget shows contextual hints per active tab.
+- Issue 3: Horizontal overflow — `#analysis-view` gets `overflow-x: hidden`, `#email-detail` uses `width: 90%; max-width: 80` instead of fixed `width: 72`, sender column truncated to 30 chars.
+- Fixed `tests/tui/test_screens.py` to pass `analysis_id=1` to `EmailDetailScreen`.
+
+[17:15] Merge security tests and docs agents, resolve CHANGELOG conflicts, clean up worktree branches. 191 tests passing.
+
 [17:00] Add comprehensive security tests for auth state store, config validators, and JWT revocation:
 - `tests/test_auth_service.py` (NEW): 10 tests covering GoogleAuthService state store — stores state on start_authorization, consumes on exchange_code (one-time use), rejects unknown/replayed state, cleans up expired entries on both start_authorization and exchange_code, verifies code_verifier passed to flow, thread safety with 10 concurrent workers.
 - `tests/test_config.py` (NEW): 13 tests covering AppConfig validators — rejects short/empty JWT secret, rejects empty fernet key, rejects invalid/asymmetric JWT algorithms (none, RS256), accepts all valid HS* algorithms and valid keys.
 - `tests/test_security.py` (MODIFY): Added 3 tests to TestJWT — unique jti per token for same user, revoked token rejected while new token for same user still works, denylist cleanup removes expired entries when new revocation triggers cleanup.
 - `tests/test_auth_routes.py` (MODIFY): Added test_callback_rejects_failed_credentials (null token returns 400), test_callback_tokens_encrypted_in_db (access/refresh tokens never stored in plaintext), test_logout_clears_token_expiry (token_expiry set to None on logout).
+
+[16:55] Fix slow analysis — eliminate double retries, respect rate-limit headers:
+- `app/services/classification_service.py`: Set `max_retries=0` on Anthropic client (was 5) to eliminate double retry loop. Replaced `wait_exponential` + `_log_retry` with `_wait_for_rate_limit` that reads the `retry-after` header from 429 responses and waits exactly that long. Falls back to exponential backoff for 529s.
+- `app/services/analysis_service.py`: Reduced `CLASSIFICATION_CONCURRENCY` from 3 to 2 to avoid triggering rate limits in the first place.
 
 [16:30] Document security hardening in CLAUDE.md, docs/architecture.md, docs/api.md, docs/frontend-guide.md: OAuth state store, JWT revocation, config validation, token file permissions, port validation constraints.
 

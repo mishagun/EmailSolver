@@ -187,5 +187,5 @@ class BaseClassifiedEmailRepository(ABC):
 
     @abstractmethod
     async def get_sender_summary(
-        self, *, analysis_id: int, category: str
+        self, *, analysis_id: int, category: str | None = None
     ) -> list[dict]: ...

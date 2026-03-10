@@ -28,3 +28,7 @@ class AppModalScreen(ModalScreen[None]):
     @property
     def email_app(self) -> EmailSolverApp:
         return self.app  # type: ignore[return-value]
+
+    @property
+    def client(self) -> EmailSolverClient:
+        return self.email_app.client
