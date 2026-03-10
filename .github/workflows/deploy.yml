@@ -24,6 +24,10 @@ jobs:
 
       - name: Run backend tests
         run: uv run pytest tests/ -x -q
+        env:
+          JWT_SECRET_KEY: test-secret-key-that-is-at-least-32-chars
+          FERNET_KEY: kOmnJJbddZ_wLey3GOjF6SPPQhse-Q2wUGNh_rbDqpM=
+          ANTHROPIC_API_KEY: test-key
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
