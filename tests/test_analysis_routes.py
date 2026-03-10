@@ -62,6 +62,54 @@ class TestCreateAnalysis:
         assert call_kwargs["custom_categories"] == ["receipts", "travel"]
 
     @pytest.mark.asyncio
+    async def test_creates_inbox_scan_analysis(
+        self, authenticated_client, mock_analysis_service: AnalysisService
+    ) -> None:
+        # Arrange
+        authenticated_client._transport.app.dependency_overrides[get_analysis_service] = (
+            lambda: mock_analysis_service
+        )
+
+        # Act
+        response = await authenticated_client.post(
+            "/api/v1/analysis",
+            json={
+                "query": "is:unread",
+                "max_emails": 50,
+                "analysis_type": "inbox_scan",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 202
+        data = response.json()
+        assert data["analysis_type"] == "inbox_scan"
+        call_kwargs = mock_analysis_service.start_analysis.call_args.kwargs
+        assert call_kwargs["analysis_type"] == "inbox_scan"
+
+    @pytest.mark.asyncio
+    async def test_defaults_to_ai_analysis_type(
+        self, authenticated_client, mock_analysis_service: AnalysisService
+    ) -> None:
+        # Arrange
+        authenticated_client._transport.app.dependency_overrides[get_analysis_service] = (
+            lambda: mock_analysis_service
+        )
+
+        # Act
+        response = await authenticated_client.post(
+            "/api/v1/analysis",
+            json={"query": "is:unread", "max_emails": 50},
+        )
+
+        # Assert
+        assert response.status_code == 202
+        data = response.json()
+        assert data["analysis_type"] == "ai"
+        call_kwargs = mock_analysis_service.start_analysis.call_args.kwargs
+        assert call_kwargs["analysis_type"] == "ai"
+
+    @pytest.mark.asyncio
     async def test_rejects_unauthenticated(self, test_client) -> None:
         response = await test_client.post(
             "/api/v1/analysis",
@@ -82,6 +130,24 @@ class TestListAnalyses:
         assert any(
             a["id"] == analysis_with_classified_emails.id for a in data["analyses"]
         )
+
+    @pytest.mark.asyncio
+    async def test_returns_analysis_type_in_list(
+        self, authenticated_client, analysis_with_classified_emails: Analysis
+    ) -> None:
+        # Arrange / Act
+        response = await authenticated_client.get("/api/v1/analysis")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] >= 1
+        analysis_data = next(
+            a for a in data["analyses"]
+            if a["id"] == analysis_with_classified_emails.id
+        )
+        assert "analysis_type" in analysis_data
+        assert analysis_data["analysis_type"] == "ai"
 
     @pytest.mark.asyncio
     async def test_returns_empty_for_new_user(self, authenticated_client) -> None:
@@ -139,6 +205,22 @@ class TestGetAnalysis:
             s for s in data["summary"] if s["category"] == "promotions"
         )
         assert promo_summary["recommended_actions"] == ["mark_read", "move_to_category"]
+
+    @pytest.mark.asyncio
+    async def test_returns_analysis_type_in_detail(
+        self, authenticated_client, analysis_with_classified_emails: Analysis
+    ) -> None:
+        # Arrange
+        aid = analysis_with_classified_emails.id
+
+        # Act
+        response = await authenticated_client.get(f"/api/v1/analysis/{aid}")
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "analysis_type" in data
+        assert data["analysis_type"] == "ai"
 
     @pytest.mark.asyncio
     async def test_returns_404_for_nonexistent(self, authenticated_client) -> None:

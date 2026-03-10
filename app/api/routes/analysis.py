@@ -37,6 +37,7 @@ async def create_analysis(
     analysis = await analysis_repo.create(
         analysis=Analysis(
             user_id=user.id,
+            analysis_type=request.analysis_type.value,
             status="pending",
             query=request.query,
         )
@@ -44,6 +45,7 @@ async def create_analysis(
 
     analysis_service.start_analysis(
         analysis_id=analysis.id,
+        analysis_type=request.analysis_type.value,
         encrypted_access_token=user.encrypted_access_token,
         encrypted_refresh_token=user.encrypted_refresh_token,
         query=request.query,
@@ -54,6 +56,7 @@ async def create_analysis(
 
     return AnalysisResponse(
         id=analysis.id,
+        analysis_type=analysis.analysis_type,
         status=analysis.status,
         query=analysis.query,
         created_at=analysis.created_at,
@@ -70,6 +73,7 @@ async def list_analyses(
         analyses=[
             AnalysisResponse(
                 id=a.id,
+                analysis_type=a.analysis_type,
                 status=a.status,
                 query=a.query,
                 total_emails=a.total_emails,
@@ -128,6 +132,7 @@ async def get_analysis(
 
     return AnalysisResponse(
         id=analysis.id,
+        analysis_type=analysis.analysis_type,
         status=analysis.status,
         query=analysis.query,
         total_emails=analysis.total_emails,

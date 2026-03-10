@@ -11,6 +11,63 @@ All notable changes to EmailSolver are documented here.
 
 ---
 
+## 2026-03-10
+
+- [17:59] Redesign favicon: solid black envelope with off-white fold lines, no checkmark and link in index.html (`web/public/favicon.svg`, `web/index.html`)
+- [17:56] Fix footer links to inherit color instead of default blue, add MIT LICENSE file
+- [17:54] Add footer to Layout with "developed by mike feldman" + LinkedIn and GitHub links (`web/src/components/Layout.tsx`)
+- [17:52] Improve DashboardPage with inline descriptions: richer text for inbox scan and ai analysis cards explaining what each does and auto-apply behavior, added explanation text below auto-apply checkbox (`web/src/pages/DashboardPage.tsx`)
+
+- [--:--] Restyle checkboxes in web frontend: replaced default browser checkboxes with custom brutalist style — no shadows, white background, 1px black border, no border-radius, solid black fill with white checkmark when checked (`web/src/styles/global.css`)
+
+[17:55] Fix action badges stacking vertically: added `.actions-inline` CSS class with `white-space: nowrap` and compact badge sizing. Applied to SummaryTab and SendersView "actions applied" columns. Rows now stay single-height regardless of action count.
+
+[17:53] Fix undo never available: replaced `useRef`+`useState` sync approach with pure `useState` for undo stack. Fixed stale closure in keyboard handler by using stable refs (`handleSelectionActionRef`, `handleToggleRef`, `fetchAnalysisRef`) updated on every render. Keyboard shortcuts now always use latest state.
+
+[17:51] Add multi-select: checkbox column in EmailsTable, SummaryTab, and SendersView with select-all header checkbox. Selection state (`selectedEmails`, `selectedCategories`, `selectedSenders`) clears on tab/filter change. ActionBar scope shows "{n} selected" when items are checked. Actions apply to selected items when selection exists, else fall back to current filter scope.
+
+[17:49] Add immediate visual feedback: `flash-action` CSS animation (blue flash, 0.4s) applied to affected rows when action is applied. Flash IDs tracked via `flashIds` state with auto-clear timeout. Works on email rows, category rows (via child email IDs), and sender rows.
+
+[17:47] Add 14 AnalysisPage tests covering: category checkboxes, email multi-select, select-all, scope display, undo enable/disable, action API params, undo API params, selected-only actions, selection clearing, inline badge rendering. Updated ActionBar tests (8 total) for undo button states and tooltips. Updated HoverActions tests (4 total) confirming no undo button and tooltips present.
+
+[17:40] Restyle insights charts: replace flat blue (#0055ff) fills with cold faded palette. Category bars now use distinct muted colors per bar (`CATEGORY_PALETTE`). Timeline uses `#a8b5c8`, senders use `#8a9bae`, confidence uses `#8a9bae`. Action pie colors updated to softer tones (`#7a9cc6` read, `#7aab7a` moved, `#c47a7a` spam/unsub).
+
+[17:37] Add insights tab to web AnalysisPage with recharts visualizations: overview stat cards (total emails, categories, senders, avg confidence, unsub opportunities), category distribution bar chart (clickable), email volume timeline (last 14 days), top 10 senders horizontal bar chart, action breakdown pie chart, confidence distribution histogram. All charts styled with brutalist aesthetic (IBM Plex Mono, no rounded corners, 1px solid borders, matching CSS variable colors). New files: `web/src/components/insights/InsightsTab.tsx`, `StatCard.tsx`, `insights.css`. Modified `AnalysisPage.tsx` to add `insights` tab. Added `recharts` dependency. 9 tests in `InsightsTab.test.tsx`.
+
+[22:15] Fix unsubscribe: emails without `has_unsubscribe` are now skipped instead of being marked as spam. Split `classified_emails` into `unsubscribable` (has headers) and `skipped` (no headers). Only emails with unsubscribe capability get `action_taken` recorded. Backend logs skipped count.
+
+[22:10] Redesign undo as page-level action: removed undo button from HoverActions and EmailDetailModal. Undo now uses a frontend undo stack (`undoStackRef` in AnalysisPage) that records `{action, emailIds}` for each action. Pressing `z` or clicking `[z] undo` in ActionBar pops the stack and sends undo for those specific email_ids. ActionBar undo button disabled when stack is empty (`canUndo` prop).
+
+[21:45] Add `email_action_history` table (migration `18db2440cd0b`) for full action audit trail per email. Every action now records a history entry via `bulk_record_action`. Undo (`pop_last_action`) removes the latest entry, restores `action_taken` to the previous action (or None). Multi-level undo supported. Updated protocol, repository, analysis_service, and all test mocks.
+
+[21:40] Remove misleading undo symbol (↩/⎌) from per-email HoverActions.
+
+[21:30] Fix hover actions CSS: replaced unreliable `tr { position: relative }` with `.hover-actions-cell` class on the `<td>`, making absolute positioning reliable across browsers (especially Safari). Added `white-space: nowrap` and `cursor: pointer` to hover action buttons.
+
+[21:25] Add undo action (`z` key): backend `ActionType.UNDO` in `schemas.py`, undo logic in `analysis_service.py` that reverses Gmail changes (mark_spam→remove SPAM/add INBOX, mark_read→add UNREAD, move_to_category→remove label, unsubscribe→add INBOX/remove SPAM). Updated `protocols.py` and `classified_email_repository.py` to accept `action_taken: str | None`. Frontend: added undo to `types.ts`, `HoverActions.tsx`, `ActionBar.tsx`, `EmailDetailModal.tsx`, keyboard map in `AnalysisPage.tsx`.
+
+[21:20] Add tooltips to all action buttons (HoverActions + ActionBar) explaining what each action does via `title` attribute.
+
+[21:15] Add "actions applied" column to SummaryTab (categories view) and SendersView (group by sender) showing colored badges with counts per action type (e.g. `spam: 3`, `read: 5`). Both components now receive `emails` prop to compute action counts via `useMemo`.
+
+[21:10] Document nvm workaround in CLAUDE.md: always use absolute paths (`/Users/mikhail_f/.nvm/versions/node/v22.16.0/bin/node`) instead of bare `node`/`npx`/`npm` to avoid nvm lazy-loading shell function hang.
+
+[20:15] Extract hardcoded Postgres credentials from `docker-compose.yml` into `.env` variables (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`). All services now reference `${VAR}` interpolation. Updated `.env` and `.env.example` with the new vars. Backup retention/interval also configurable via env with defaults.
+
+[20:00] Add automated database backup service (`db-backup`) to `docker-compose.yml` — runs `pg_dump` daily with 7-day retention, writes to `./backups/` bind mount. Added `scripts/db_restore.sh` restore script, `backups/` to `.gitignore`, documented backup strategy in `CLAUDE.md` Deployment section.
+
+[18:30] Web frontend: Add "inbox scan" analysis type support. `types.ts`: added `analysis_type` to `AnalysisResponse` and `AnalysisCreateRequest`. `DashboardPage.tsx`: replaced single "new analysis" form with two launcher cards (inbox scan + ai analysis) side by side, shared options row below, and type column in analyses table. `AnalysisPage.tsx`: hide priority column in EmailsTable and show dash for recommended actions in SummaryTab when `analysis_type === 'inbox_scan'`; added type badge in analysis header.
+
+[18:00] TUI: Add "Inbox Scan" analysis type support. Added `AnalysisType` enum and `analysis_type` field to `AnalysisResponse`/`AnalysisCreateRequest` in `tui/models.py`. Dashboard (`tui/screens/dashboard.py`) now has two buttons ("Start Inbox Scan" / "Start AI Analysis") replacing the single "Start" button, and analyses table shows a "Type" column. Categories input only used for AI analysis. Analysis screen (`tui/screens/analysis.py`) shows "--" for priority column when analysis is inbox_scan type.
+
+[16:05] Add visual action feedback + hover action menus to web frontend. Email rows now show colored left borders, reduced opacity, and strikethrough (spam/unsub) based on `action_taken`. Raw action text replaced with colored badges. Hover over any row in Summary/Emails/Senders tabs reveals inline action buttons (k/m/v/s/u). New files: `HoverActions.tsx`, `utils/actionDisplay.ts`. Updated: `variables.css` (action colors), `global.css` (row/badge/hover styles), `AnalysisPage.tsx` (all 3 tabs + handleAction overrides), `EmailDetailModal.tsx` (action badge). Added 7 new tests (HoverActions: 3, actionDisplay: 3, EmailDetailModal: 1 updated). All 56 tests pass.
+
+[14:00] Add React web frontend (`web/`) — full SPA with React 18, TypeScript, Vite, React Router v6. Pages: LoginPage, CallbackPage, DashboardPage, AnalysisPage (3-tab: Summary/Emails/Senders). Components: Layout, ActionBar, AnalysisProgress, EmailDetailModal. API client (`api/client.ts`) mirrors `tui/client.py`. Auth via `AuthContext` with localStorage JWT persistence. Design: IBM Plex Mono, brutalist aesthetic, lowercase throughout, warm off-white palette.
+
+[14:00] Backend: add `web_app_url` config field (`app/core/config.py`) and `redirect_url` query param to `/auth/login` + `/auth/callback` (`app/api/routes/auth.py`). Validates redirect_url starts with configured `web_app_url` to prevent open redirects. Embeds redirect_url in OAuth state, extracts on callback to redirect with JWT token.
+
+[14:00] Add 49 frontend tests (9 test files) — Vitest + Testing Library + jsdom: API client tests (11), AuthContext tests (4), usePolling hook tests (5), ActionBar tests (4), AnalysisProgress tests (3), EmailDetailModal tests (10), LoginPage tests (3), CallbackPage tests (3), DashboardPage tests (6).
+
 ## 2026-03-05
 
 [20:30] Fix OAuth "Invalid or expired OAuth state" bug — `get_auth_service()` in `dependencies.py` was creating a new `GoogleAuthService` instance per request, so the state stored during `/login` was lost by the time `/callback` fired. Made the auth service a module-level singleton (`_auth_service`) so the in-memory state store persists across requests.

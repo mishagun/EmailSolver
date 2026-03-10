@@ -17,6 +17,7 @@ from tui.client import ApiError
 from tui.models import (
     ActionType,
     AnalysisResponse,
+    AnalysisType,
     ApplyActionsRequest,
     SenderGroupSummary,
 )
@@ -227,13 +228,18 @@ class AnalysisScreen(AppScreen):
         filter_text = " > ".join(filter_parts) if filter_parts else "all"
         filter_label.update(f"showing: {filter_text} ({len(emails)} emails)")
 
+        is_inbox_scan = (
+            self._analysis is not None
+            and self._analysis.analysis_type == AnalysisType.INBOX_SCAN
+        )
         for email in emails:
+            priority = "--" if is_inbox_scan else str(email.importance or 0)
             emails_table.add_row(
                 " ",
                 (email.sender or "")[:25],
                 (email.subject or "")[:40],
                 email.category or "",
-                str(email.importance or 0),
+                priority,
                 email.action_taken or "--",
                 key=str(email.id),
             )

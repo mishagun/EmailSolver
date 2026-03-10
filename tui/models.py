@@ -43,6 +43,11 @@ class EmailStatsResponse(BaseModel):
     total_count: int
 
 
+class AnalysisType(StrEnum):
+    INBOX_SCAN = "inbox_scan"
+    AI_ANALYSIS = "ai"
+
+
 class ActionType(StrEnum):
     KEEP = "keep"
     MOVE_TO_CATEGORY = "move_to_category"
@@ -85,6 +90,7 @@ class ClassifiedEmailResponse(BaseModel):
 
 class AnalysisResponse(BaseModel):
     id: int
+    analysis_type: str = "ai"
     status: str
     query: str | None = None
     total_emails: int | None = None
@@ -102,6 +108,7 @@ class AnalysisListResponse(BaseModel):
 
 
 class AnalysisCreateRequest(BaseModel):
+    analysis_type: str = "ai"
     query: str = "is:unread"
     max_emails: int = 100
     auto_apply: bool = False

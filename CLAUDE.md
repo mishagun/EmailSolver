@@ -25,6 +25,7 @@
 - **Config fails fast on weak secrets** — `jwt_secret_key` (min 32 chars), `fernet_key` (required), `jwt_algorithm` (allowlist: HS256/HS384/HS512) validated via Pydantic `field_validator`. App won't start with insecure defaults.
 - **JWT revocation via in-memory denylist** — `jti` claim on every token, checked in `decode_jwt`. `revoke_jwt` stores jti with remaining TTL. Single-process only; multi-process needs Redis.
 - **Token file permissions** — `~/.emailsolver/token` written with `0o600`, directory with `0o700`.
+- **Action history** — `email_action_history` table records every action per email with timestamp. `action_taken` on `classified_emails` is the denormalized "current" action. On undo, `pop_last_action` removes the latest history entry and restores `action_taken` to the previous one. Supports multi-level undo.
 
 ## TUI (Terminal UI)
 
@@ -42,12 +43,27 @@
 - **Senders without category**: `category` is optional (`str | None = None`) throughout — protocol, repository, route, client, screen. When `None`, senders tab shows all senders across categories.
 - **Testing**: Textual `run_test()` + `Pilot` for screen tests; mock `httpx` for client tests
 
+## Web Frontend
+
+- **Tech stack**: React 18 + TypeScript + Vite + React Router v6
+- **Design**: IBM Plex Mono monospace, brutalist aesthetic, all lowercase text (`text-transform: lowercase`), warm off-white (`#f8f7f4`), no rounded corners, 1px solid black borders
+- **Auth flow**: Login → redirect to `{API_BASE}/api/v1/auth/login?redirect_url={WEB_BASE}/callback` → Google OAuth → backend redirects to `{WEB_BASE}/callback?token={jwt}` → stored in `localStorage`
+- **`web_app_url` config**: Must be set in `.env` to enable web OAuth redirect. Backend validates `redirect_url` starts with this value (open redirect prevention).
+- **API client**: `web/src/api/client.ts` — singleton `apiClient`, typed fetch wrapper mirroring `tui/client.py`
+- **State management**: React Context (`AuthContext`) + component state. No external state library.
+- **Routing**: `/login`, `/callback`, `/dashboard` (protected), `/analysis/:id` (protected). `ProtectedRoute` wrapper redirects to `/login` when unauthenticated.
+- **Polling**: `usePolling` hook with `setInterval` + auto-cleanup for pending/processing analyses (2s interval)
+- **Keyboard shortcuts**: `k/m/v/s/u` for actions, `Escape` to navigate back, `r` to refresh (disabled when input focused or modal open)
+- **Testing**: Vitest + Testing Library + jsdom. Run via `npm test` in `web/`. Test utils in `web/src/test/`.
+- **Dev**: `cd web && npm run dev` → `http://localhost:5173`. Set `VITE_API_BASE_URL` env var if backend is not at `http://localhost:8000`.
+
 ## Deployment
 
 - `docker-compose.yml` has a `migrations` one-shot service that runs `alembic upgrade head` before the app starts
 - `alembic/env.py` overrides `sqlalchemy.url` with `DATABASE_URL` env var when set (required for Docker where DB host is `postgres`, not `localhost`)
 - `scripts/deploy.sh` — validates `.env`, builds, starts services, polls health
 - `Dockerfile` includes a `HEALTHCHECK` using python urllib (no curl in slim image)
+- **Database backups**: `db-backup` service runs `pg_dump` daily, writes gzipped custom-format dumps to `./backups/` bind mount, retains last 7. Restore via `scripts/db_restore.sh <file>`. Future: add S3 sync via cron or additional service.
 
 ## Testing
 
@@ -103,6 +119,16 @@ tui/
   models.py            # Pydantic models (mirrors app/models/schemas.py)
   config.py            # TUI config (EMAILSOLVER_TUI_ env prefix)
   __main__.py          # Entry point: python -m tui
+web/
+  src/
+    api/               # Typed fetch client + TS interfaces (mirrors tui/client.py)
+    components/        # Reusable components (Layout, ActionBar, AnalysisProgress, EmailDetailModal)
+    context/           # AuthContext (JWT in localStorage)
+    hooks/             # useAuth, usePolling
+    pages/             # LoginPage, CallbackPage, DashboardPage, AnalysisPage
+    styles/            # CSS: variables.css, global.css, animations.css
+    test/              # Test setup, fixtures, render utils
+  vite.config.ts       # Vite + Vitest config
 tests/                 # Pytest test suite
   tui/                 # TUI tests (models, client, config, screens)
 alembic/               # Database migrations
@@ -112,7 +138,17 @@ scripts/               # Deployment + E2E test scripts (not CI)
 
 ## Common Workflows
 
-- **Adding a new action type**: Add to `ActionType` enum in `schemas.py`, implement in `_apply_actions()` in `analysis_service.py`
+- **Adding a new action type**: Add to `ActionType` enum in `schemas.py`, implement in `_apply_actions()` in `analysis_service.py`. On frontend: add to `ActionType` in `types.ts`, `HoverActions.tsx`, `ActionBar.tsx`, `EmailDetailModal.tsx`, keyboard map in `AnalysisPage.tsx`, and `actionDisplay.ts`.
 - **Adding a new base category**: Add to `BASE_CATEGORIES` in `classification_service.py`
 - **Adding a new API endpoint**: Add route in `app/api/routes/`, wire dependencies in `dependencies.py`, add protocol method if new service logic needed
 - **Database changes**: `uv run alembic revision --autogenerate -m "description"` then `uv run alembic upgrade head`
+
+## Node.js / nvm
+
+- **CRITICAL**: nvm lazy-loading shell function intercepts `node`/`npx`/`npm` commands and dumps its help text, causing commands to hang or produce garbage output.
+- **Always use absolute paths** for node commands:
+  - Node: `/Users/mikhail_f/.nvm/versions/node/v22.16.0/bin/node`
+  - npx: `/Users/mikhail_f/.nvm/versions/node/v22.16.0/bin/npx`
+  - npm: `/Users/mikhail_f/.nvm/versions/node/v22.16.0/bin/npm`
+- Example TypeScript check: `/Users/mikhail_f/.nvm/versions/node/v22.16.0/bin/node /Users/mikhail_f/.nvm/versions/node/v22.16.0/bin/npx tsc --noEmit`
+- **Never** use `source ~/.nvm/nvm.sh`, `export NVM_DIR`, `nvm use`, or bare `node`/`npx`/`npm` — they all trigger the nvm help dump.

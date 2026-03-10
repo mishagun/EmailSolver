@@ -14,7 +14,7 @@ from textual.widgets import (
 )
 
 from tui.client import ApiError
-from tui.models import AnalysisCreateRequest, AnalysisResponse
+from tui.models import AnalysisCreateRequest, AnalysisResponse, AnalysisType
 from tui.screens import AppScreen
 
 
@@ -55,22 +55,26 @@ class DashboardScreen(AppScreen):
                 with Horizontal(classes="form-row"):
                     yield Label("Auto-Apply:", classes="form-label")
                     yield Switch(value=False, id="auto-apply-switch")
-                with Horizontal(classes="form-row"):
+                with Horizontal(classes="form-row", id="categories-row"):
                     yield Label("Categories:", classes="form-label")
                     yield Input(
                         placeholder="comma-separated (optional)",
                         id="categories-input",
                         classes="form-input",
                     )
-                yield Button(
-                    "Start", id="start-analysis", variant="default"
-                )
+                with Horizontal(classes="form-row"):
+                    yield Button(
+                        "Start Inbox Scan", id="start-inbox-scan", variant="default"
+                    )
+                    yield Button(
+                        "Start AI Analysis", id="start-ai-analysis", variant="default"
+                    )
             yield Label("", id="dashboard-status")
         yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one("#analyses-table", DataTable)
-        table.add_columns("ID", "Status", "Query", "Progress", "Created")
+        table.add_columns("ID", "Type", "Status", "Query", "Progress", "Created")
         table.cursor_type = "row"
         self.load_data()
 
@@ -120,8 +124,10 @@ class DashboardScreen(AppScreen):
             for a in analyses.analyses:
                 progress = self._format_progress(analysis=a)
                 created = a.created_at.strftime("%Y-%m-%d %H:%M")
+                type_label = "scan" if a.analysis_type == AnalysisType.INBOX_SCAN else "ai"
                 table.add_row(
                     str(a.id),
+                    type_label,
                     a.status,
                     a.query or "",
                     progress,
@@ -149,11 +155,13 @@ class DashboardScreen(AppScreen):
             self.email_app.push_analysis_screen(analysis_id=analysis_id)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "start-analysis":
-            self.start_analysis()
+        if event.button.id == "start-inbox-scan":
+            self.start_analysis(analysis_type=AnalysisType.INBOX_SCAN)
+        elif event.button.id == "start-ai-analysis":
+            self.start_analysis(analysis_type=AnalysisType.AI_ANALYSIS)
 
     @work(exclusive=True, group="create")
-    async def start_analysis(self) -> None:
+    async def start_analysis(self, analysis_type: str = AnalysisType.AI_ANALYSIS) -> None:
         status_label = self.query_one("#dashboard-status", Label)
         unread_only = self.query_one("#unread-only-switch", Switch).value
         query = self.query_one("#query-input", Input).value.strip()
@@ -163,9 +171,6 @@ class DashboardScreen(AppScreen):
             "#max-emails-input", Input
         ).value.strip()
         auto_apply = self.query_one("#auto-apply-switch", Switch).value
-        categories_str = self.query_one(
-            "#categories-input", Input
-        ).value.strip()
 
         try:
             max_emails = int(max_emails_str)
@@ -174,12 +179,17 @@ class DashboardScreen(AppScreen):
             return
 
         custom_categories: list[str] | None = None
-        if categories_str:
-            custom_categories = [
-                c.strip() for c in categories_str.split(",") if c.strip()
-            ]
+        if analysis_type == AnalysisType.AI_ANALYSIS:
+            categories_str = self.query_one(
+                "#categories-input", Input
+            ).value.strip()
+            if categories_str:
+                custom_categories = [
+                    c.strip() for c in categories_str.split(",") if c.strip()
+                ]
 
         request = AnalysisCreateRequest(
+            analysis_type=analysis_type,
             query=query,
             max_emails=max_emails,
             auto_apply=auto_apply,

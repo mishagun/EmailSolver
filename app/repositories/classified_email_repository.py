@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Session
 
 from app.core.protocols import BaseClassifiedEmailRepository
-from app.models.db import ClassifiedEmail
+from app.models.db import ClassifiedEmail, EmailActionHistory
 
 
 class SQLAlchemyClassifiedEmailRepository(BaseClassifiedEmailRepository):
@@ -109,7 +109,7 @@ class SQLAlchemyClassifiedEmailRepository(BaseClassifiedEmailRepository):
             return list(result.scalars().all())
 
     async def bulk_update_action_taken(
-        self, *, email_ids: list[int], action_taken: str
+        self, *, email_ids: list[int], action_taken: str | None
     ) -> None:
         if not email_ids:
             return
@@ -161,3 +161,85 @@ class SQLAlchemyClassifiedEmailRepository(BaseClassifiedEmailRepository):
                 }
                 for row in result.all()
             ]
+
+    async def bulk_record_action(
+        self, *, email_ids: list[int], action: str
+    ) -> None:
+        if not email_ids:
+            return
+        async with self._session_maker() as session:
+            session.add_all([
+                EmailActionHistory(classified_email_id=eid, action=action)
+                for eid in email_ids
+            ])
+            await session.commit()
+
+    async def pop_last_action(
+        self, *, email_ids: list[int]
+    ) -> dict[int, str | None]:
+        if not email_ids:
+            return {}
+        async with self._session_maker() as session:
+            # Get the most recent history entry per email
+            latest_subq = (
+                select(
+                    EmailActionHistory.classified_email_id,
+                    func.max(EmailActionHistory.id).label("max_id"),
+                )
+                .where(EmailActionHistory.classified_email_id.in_(email_ids))
+                .group_by(EmailActionHistory.classified_email_id)
+                .subquery()
+            )
+            latest_result = await session.execute(
+                select(EmailActionHistory)
+                .join(
+                    latest_subq,
+                    EmailActionHistory.id == latest_subq.c.max_id,
+                )
+            )
+            latest_entries = list(latest_result.scalars().all())
+
+            # Delete those entries
+            if latest_entries:
+                await session.execute(
+                    delete(EmailActionHistory)
+                    .where(EmailActionHistory.id.in_([e.id for e in latest_entries]))
+                )
+
+            # Now find the new most recent action per email (previous action)
+            prev_subq = (
+                select(
+                    EmailActionHistory.classified_email_id,
+                    func.max(EmailActionHistory.id).label("max_id"),
+                )
+                .where(EmailActionHistory.classified_email_id.in_(email_ids))
+                .group_by(EmailActionHistory.classified_email_id)
+                .subquery()
+            )
+            prev_result = await session.execute(
+                select(EmailActionHistory)
+                .join(
+                    prev_subq,
+                    EmailActionHistory.id == prev_subq.c.max_id,
+                )
+            )
+            prev_by_email = {
+                e.classified_email_id: e.action
+                for e in prev_result.scalars().all()
+            }
+
+            # Build result: email_id -> previous action (or None if no history left)
+            result_map: dict[int, str | None] = {}
+            for eid in email_ids:
+                result_map[eid] = prev_by_email.get(eid)
+
+            # Update action_taken on each email to the previous action
+            for eid, prev_action in result_map.items():
+                await session.execute(
+                    update(ClassifiedEmail)
+                    .where(ClassifiedEmail.id == eid)
+                    .values(action_taken=prev_action)
+                )
+
+            await session.commit()
+            return result_map

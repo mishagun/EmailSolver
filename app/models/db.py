@@ -32,6 +32,7 @@ class Analysis(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    analysis_type: Mapped[str] = mapped_column(String(20), nullable=False, default="ai")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
     query: Mapped[str | None] = mapped_column(String(500))
     total_emails: Mapped[int | None] = mapped_column(Integer)
@@ -86,3 +87,27 @@ class ClassifiedEmail(Base):
     )
 
     analysis: Mapped["Analysis"] = relationship(back_populates="classified_emails")
+    action_history: Mapped[list["EmailActionHistory"]] = relationship(
+        back_populates="classified_email", cascade="all, delete-orphan",
+        order_by="EmailActionHistory.created_at.desc()",
+    )
+
+
+class EmailActionHistory(Base):
+    __tablename__ = "email_action_history"
+    __table_args__ = (
+        Index("ix_email_action_history_email_id", "classified_email_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    classified_email_id: Mapped[int] = mapped_column(
+        ForeignKey("classified_emails.id", ondelete="CASCADE"), nullable=False,
+    )
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    classified_email: Mapped["ClassifiedEmail"] = relationship(
+        back_populates="action_history"
+    )

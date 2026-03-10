@@ -1,0 +1,60 @@
+.insights-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  flex: 1;
+  min-width: 140px;
+  border: var(--border);
+  background: var(--color-surface);
+  padding: 16px;
+}
+
+.stat-card-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+
+.stat-card-value {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.insights-chart {
+  border: var(--border);
+  background: var(--color-surface);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.insights-chart-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.insights-columns {
+  display: flex;
+  gap: 24px;
+}
+
+.insights-columns > .insights-chart {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .insights-columns {
+    flex-direction: column;
+  }
+}
+
+.recharts-text {
+  font-family: var(--font-mono);
+  text-transform: lowercase;
+  font-size: 12px;
+}

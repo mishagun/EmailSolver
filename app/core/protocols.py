@@ -177,7 +177,7 @@ class BaseClassifiedEmailRepository(ABC):
 
     @abstractmethod
     async def bulk_update_action_taken(
-        self, *, email_ids: list[int], action_taken: str
+        self, *, email_ids: list[int], action_taken: str | None
     ) -> None: ...
 
     @abstractmethod
@@ -189,3 +189,13 @@ class BaseClassifiedEmailRepository(ABC):
     async def get_sender_summary(
         self, *, analysis_id: int, category: str | None = None
     ) -> list[dict]: ...
+
+    @abstractmethod
+    async def bulk_record_action(
+        self, *, email_ids: list[int], action: str
+    ) -> None: ...
+
+    @abstractmethod
+    async def pop_last_action(
+        self, *, email_ids: list[int]
+    ) -> dict[int, str | None]: ...

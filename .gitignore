@@ -29,3 +29,5 @@ htmlcov/
 .DS_Store
 
 uv.lock
+
+backups/

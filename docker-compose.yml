@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: emailsolver
-      POSTGRES_PASSWORD: emailsolver
-      POSTGRES_DB: emailsolver
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U emailsolver"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,7 +20,7 @@ services:
     command: ["uv", "run", "alembic", "upgrade", "head"]
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://emailsolver:emailsolver@postgres:5432/emailsolver
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,7 +31,7 @@ services:
       - "8000:8000"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://emailsolver:emailsolver@postgres:5432/emailsolver
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,6 +43,39 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+
+  db-backup:
+    image: postgres:16-alpine
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      BACKUP_RETENTION: ${BACKUP_RETENTION:-7}
+      BACKUP_INTERVAL: ${BACKUP_INTERVAL:-86400}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          TIMESTAMP=$$(date +%Y%m%d_%H%M%S)
+          BACKUP_FILE="/backups/emailsolver_$${TIMESTAMP}.sql.gz"
+          echo "[$${TIMESTAMP}] Starting backup..."
+          pg_dump -Fc | gzip > "$${BACKUP_FILE}"
+          if [ $$? -eq 0 ]; then
+            echo "[$${TIMESTAMP}] Backup saved: $${BACKUP_FILE}"
+          else
+            echo "[$${TIMESTAMP}] Backup FAILED"
+          fi
+          ls -1t /backups/emailsolver_*.sql.gz 2>/dev/null | tail -n +$$((BACKUP_RETENTION + 1)) | xargs rm -f 2>/dev/null
+          echo "[$${TIMESTAMP}] Sleeping $${BACKUP_INTERVAL}s until next backup..."
+          sleep $${BACKUP_INTERVAL}
+        done
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:

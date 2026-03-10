@@ -9,6 +9,15 @@ from app.core.protocols import BaseEmailService
 from app.models.schemas import EmailMetadata
 
 
+GMAIL_CATEGORY_MAP = {
+    "CATEGORY_SOCIAL": "social",
+    "CATEGORY_PROMOTIONS": "promotions",
+    "CATEGORY_UPDATES": "updates",
+    "CATEGORY_FORUMS": "forums",
+    "CATEGORY_PERSONAL": "primary",
+}
+
+
 class GmailService(BaseEmailService):
     def __init__(
         self, *, client_id: str, client_secret: str, token_uri: str
@@ -110,6 +119,13 @@ class GmailService(BaseEmailService):
         except Exception:
             return None
 
+    @staticmethod
+    def _extract_gmail_category(*, label_ids: list[str]) -> str:
+        for label_id in label_ids:
+            if label_id in GMAIL_CATEGORY_MAP:
+                return GMAIL_CATEGORY_MAP[label_id]
+        return "primary"
+
     @classmethod
     def _parse_message(cls, *, message: dict) -> EmailMetadata:
         headers = message.get("payload", {}).get("headers", [])
@@ -118,6 +134,7 @@ class GmailService(BaseEmailService):
         date_str = cls._extract_header(headers=headers, name="Date")
         list_unsub = cls._extract_header(headers=headers, name="List-Unsubscribe")
         list_unsub_post = cls._extract_header(headers=headers, name="List-Unsubscribe-Post")
+        label_ids = message.get("labelIds", [])
 
         return EmailMetadata(
             gmail_message_id=message["id"],
@@ -130,6 +147,7 @@ class GmailService(BaseEmailService):
             has_unsubscribe=list_unsub is not None,
             unsubscribe_header=list_unsub,
             unsubscribe_post_header=list_unsub_post,
+            gmail_category=cls._extract_gmail_category(label_ids=label_ids),
         )
 
     @staticmethod

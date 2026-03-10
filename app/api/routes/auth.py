@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.core import protocols
+from app.core.config import config
 from app.core.dependencies import (
     get_auth_service,
     get_current_user,
@@ -16,6 +17,7 @@ from app.models.schemas import AuthStatusResponse, MessageResponse
 router = APIRouter()
 
 _CALLBACK_STATE_PREFIX = "cb:"
+_REDIRECT_STATE_PREFIX = "ru:"
 _ALLOWED_PORT_RANGE = range(1024, 65536)
 
 _SUCCESS_HTML = """<!DOCTYPE html>
@@ -30,15 +32,24 @@ word-break:break-all;text-align:left">{token}</pre>
 @router.get("/login")
 async def login(
     callback_port: int | None = Query(default=None),
+    redirect_url: str | None = Query(default=None),
     auth_service: protocols.BaseAuthService = Depends(get_auth_service),
 ) -> RedirectResponse:
     if callback_port is not None and callback_port not in _ALLOWED_PORT_RANGE:
         raise HTTPException(status_code=400, detail="Invalid callback port")
+    if redirect_url is not None:
+        if not config.web_app_url or not redirect_url.startswith(config.web_app_url):
+            raise HTTPException(status_code=400, detail="Invalid redirect URL")
     auth_url = auth_service.start_authorization()
+    parsed = urlparse(auth_url)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    state_suffix = ""
     if callback_port is not None:
-        parsed = urlparse(auth_url)
-        params = parse_qs(parsed.query, keep_blank_values=True)
-        params["state"] = [f"{params['state'][0]}|{_CALLBACK_STATE_PREFIX}{callback_port}"]
+        state_suffix += f"|{_CALLBACK_STATE_PREFIX}{callback_port}"
+    if redirect_url is not None:
+        state_suffix += f"|{_REDIRECT_STATE_PREFIX}{redirect_url}"
+    if state_suffix:
+        params["state"] = [f"{params['state'][0]}{state_suffix}"]
         auth_url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
     return RedirectResponse(url=auth_url)
 
@@ -52,6 +63,10 @@ async def callback(
     user_repo: protocols.BaseUserRepository = Depends(get_user_repository),
 ) -> RedirectResponse:
     callback_port: int | None = None
+    redirect_url: str | None = None
+    if f"|{_REDIRECT_STATE_PREFIX}" in state:
+        state, ru_part = state.rsplit("|", 1)
+        redirect_url = ru_part[len(_REDIRECT_STATE_PREFIX):]
     if f"|{_CALLBACK_STATE_PREFIX}" in state:
         state, cb_part = state.rsplit("|", 1)
         callback_port = int(cb_part[len(_CALLBACK_STATE_PREFIX):])
@@ -110,6 +125,9 @@ async def callback(
         return RedirectResponse(
             url=f"http://localhost:{callback_port}/callback?token={jwt_token}"
         )
+    if redirect_url is not None:
+        separator = "&" if "?" in redirect_url else "?"
+        return RedirectResponse(url=f"{redirect_url}{separator}token={jwt_token}")
     return RedirectResponse(url=f"/api/v1/auth/success?token={jwt_token}")
 
 

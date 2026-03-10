@@ -42,6 +42,7 @@ class AnalysisService:
             self,
             *,
             analysis_id: int,
+            analysis_type: str = "ai",
             encrypted_access_token: str,
             encrypted_refresh_token: str,
             query: str,
@@ -49,6 +50,17 @@ class AnalysisService:
             auto_apply: bool,
             custom_categories: list[str] | None = None,
     ) -> asyncio.Task:
+        if analysis_type == "inbox_scan":
+            return asyncio.create_task(
+                self._run_inbox_scan(
+                    analysis_id=analysis_id,
+                    encrypted_access_token=encrypted_access_token,
+                    encrypted_refresh_token=encrypted_refresh_token,
+                    query=query,
+                    max_emails=max_emails,
+                    auto_apply=auto_apply,
+                )
+            )
         return asyncio.create_task(
             self._run_analysis(
                 analysis_id=analysis_id,
@@ -65,6 +77,117 @@ class AnalysisService:
         return SQLAlchemyAnalysisRepository(
             session_maker=self._async_session_maker
         )
+
+    async def _run_inbox_scan(
+            self,
+            *,
+            analysis_id: int,
+            encrypted_access_token: str,
+            encrypted_refresh_token: str,
+            query: str,
+            max_emails: int,
+            auto_apply: bool,
+    ) -> None:
+        analysis_repo = self._create_analysis_repo()
+        try:
+            await analysis_repo.update_status(
+                analysis_id=analysis_id, status="processing"
+            )
+
+            access_token = self._security_service.decrypt_token(
+                encrypted_token=encrypted_access_token
+            )
+            refresh_token = self._security_service.decrypt_token(
+                encrypted_token=encrypted_refresh_token
+            )
+            credentials = self._email_service.build_credentials(
+                access_token=access_token, refresh_token=refresh_token
+            )
+
+            message_ids = await self._email_service.list_messages(
+                credentials=credentials, query=query, max_results=max_emails
+            )
+
+            if not message_ids:
+                await analysis_repo.update_status(
+                    analysis_id=analysis_id,
+                    status="completed",
+                    total_emails=0,
+                    processed_emails=0,
+                    completed_at=datetime.now(UTC),
+                )
+                return
+
+            await analysis_repo.update_status(
+                analysis_id=analysis_id,
+                status="processing",
+                total_emails=len(message_ids),
+                processed_emails=0,
+            )
+
+            all_records: list[ClassifiedEmail] = []
+            for i in range(0, len(message_ids), 50):
+                chunk_ids = message_ids[i: i + 50]
+                emails = await self._email_service.get_messages_batch(
+                    credentials=credentials, message_ids=chunk_ids
+                )
+                records = [
+                    ClassifiedEmail(
+                        analysis_id=analysis_id,
+                        gmail_message_id=email.gmail_message_id,
+                        gmail_thread_id=email.gmail_thread_id,
+                        sender=email.sender,
+                        sender_domain=email.sender_domain,
+                        subject=email.subject,
+                        snippet=email.snippet,
+                        received_at=email.received_at,
+                        category=email.gmail_category or "primary",
+                        has_unsubscribe=email.has_unsubscribe,
+                        unsubscribe_header=email.unsubscribe_header,
+                        unsubscribe_post_header=email.unsubscribe_post_header,
+                    )
+                    for email in emails
+                ]
+                created = await self._classified_email_repo.bulk_create(emails=records)
+                all_records.extend(created)
+
+                await analysis_repo.update_status(
+                    analysis_id=analysis_id,
+                    status="processing",
+                    processed_emails=min(i + 50, len(message_ids)),
+                )
+
+            if auto_apply and all_records:
+                category_actions = {
+                    "spam": ["mark_spam"],
+                    "promotions": ["mark_read"],
+                }
+                await analysis_repo.update_category_actions(
+                    analysis_id=analysis_id,
+                    category_actions=category_actions,
+                )
+                await self._auto_apply_actions(
+                    classified_emails=all_records,
+                    category_actions=category_actions,
+                    encrypted_access_token=encrypted_access_token,
+                    encrypted_refresh_token=encrypted_refresh_token,
+                )
+
+            await analysis_repo.update_status(
+                analysis_id=analysis_id,
+                status="completed",
+                processed_emails=len(message_ids),
+                completed_at=datetime.now(UTC),
+            )
+
+        except Exception as exc:
+            logger.exception("Inbox scan %d failed", analysis_id)
+            await analysis_repo.update_status(
+                analysis_id=analysis_id,
+                status="failed",
+                error_message=str(exc),
+                completed_at=datetime.now(UTC),
+            )
 
     async def _run_analysis(
             self,
@@ -296,10 +419,16 @@ class AnalysisService:
         msg_ids = [e.gmail_message_id for e in classified_emails]
         email_ids = [e.id for e in classified_emails]
 
-        if action == "keep":
+        if action == "undo":
+            await self._undo_actions(
+                classified_emails=classified_emails,
+                credentials=credentials,
+            )
             return
 
-        if action == "move_to_category":
+        if action == "keep":
+            pass
+        elif action == "move_to_category":
             by_category: dict[str, list[str]] = defaultdict(list)
             for e in classified_emails:
                 cat = e.category or "primary"
@@ -314,20 +443,12 @@ class AnalysisService:
                     message_ids=cat_msg_ids,
                     add_labels=[label_id],
                 )
-            await self._classified_email_repo.bulk_update_action_taken(
-                email_ids=email_ids, action_taken="move_to_category"
-            )
-
         elif action == "mark_read":
             await self._email_service.modify_messages(
                 credentials=credentials,
                 message_ids=msg_ids,
                 remove_labels=["UNREAD"],
             )
-            await self._classified_email_repo.bulk_update_action_taken(
-                email_ids=email_ids, action_taken="mark_read"
-            )
-
         elif action == "mark_spam":
             await self._email_service.modify_messages(
                 credentials=credentials,
@@ -335,10 +456,6 @@ class AnalysisService:
                 add_labels=["SPAM"],
                 remove_labels=["INBOX"],
             )
-            await self._classified_email_repo.bulk_update_action_taken(
-                email_ids=email_ids, action_taken="mark_spam"
-            )
-
         elif action == "unsubscribe":
             from app.services.unsubscribe_service import (
                 attempt_http_unsubscribe,
@@ -346,9 +463,11 @@ class AnalysisService:
             )
 
             archive_ids: list[str] = []
-            spam_ids: list[str] = []
+            failed_ids: list[str] = []
+            unsubscribable = [e for e in classified_emails if e.has_unsubscribe]
+            skipped_ids = [e.id for e in classified_emails if not e.has_unsubscribe]
 
-            for e in classified_emails:
+            for e in unsubscribable:
                 unsubscribed = False
                 if e.unsubscribe_post_header and e.unsubscribe_header:
                     urls = parse_unsubscribe_urls(header=e.unsubscribe_header)
@@ -360,7 +479,7 @@ class AnalysisService:
                 if unsubscribed:
                     archive_ids.append(e.gmail_message_id)
                 else:
-                    spam_ids.append(e.gmail_message_id)
+                    failed_ids.append(e.gmail_message_id)
 
             if archive_ids:
                 await self._email_service.modify_messages(
@@ -368,16 +487,97 @@ class AnalysisService:
                     message_ids=archive_ids,
                     remove_labels=["INBOX"],
                 )
-            if spam_ids:
+            if failed_ids:
                 await self._email_service.modify_messages(
                     credentials=credentials,
-                    message_ids=spam_ids,
+                    message_ids=failed_ids,
                     add_labels=["SPAM"],
                     remove_labels=["INBOX"],
                 )
-            await self._classified_email_repo.bulk_update_action_taken(
-                email_ids=email_ids, action_taken="unsubscribe"
+
+            acted_ids = [e.id for e in unsubscribable]
+            if acted_ids:
+                await self._classified_email_repo.bulk_record_action(
+                    email_ids=acted_ids, action=action
+                )
+                await self._classified_email_repo.bulk_update_action_taken(
+                    email_ids=acted_ids, action_taken=action
+                )
+            if skipped_ids:
+                logger.info(
+                    "Skipped %d emails without unsubscribe headers", len(skipped_ids)
+                )
+            return
+
+        await self._classified_email_repo.bulk_record_action(
+            email_ids=email_ids, action=action
+        )
+        await self._classified_email_repo.bulk_update_action_taken(
+            email_ids=email_ids, action_taken=action
+        )
+
+    async def _undo_actions(
+            self,
+            *,
+            classified_emails: list[ClassifiedEmail],
+            credentials: object,
+    ) -> None:
+        actionable = [e for e in classified_emails if e.action_taken is not None]
+        if not actionable:
+            return
+
+        spam_msg_ids: list[str] = []
+        read_msg_ids: list[str] = []
+        moved_emails: list[ClassifiedEmail] = []
+        unsub_msg_ids: list[str] = []
+
+        for e in actionable:
+            if e.action_taken == "mark_spam":
+                spam_msg_ids.append(e.gmail_message_id)
+            elif e.action_taken == "mark_read":
+                read_msg_ids.append(e.gmail_message_id)
+            elif e.action_taken == "move_to_category":
+                moved_emails.append(e)
+            elif e.action_taken == "unsubscribe":
+                unsub_msg_ids.append(e.gmail_message_id)
+
+        if spam_msg_ids:
+            await self._email_service.modify_messages(
+                credentials=credentials,
+                message_ids=spam_msg_ids,
+                add_labels=["INBOX"],
+                remove_labels=["SPAM"],
             )
+        if read_msg_ids:
+            await self._email_service.modify_messages(
+                credentials=credentials,
+                message_ids=read_msg_ids,
+                add_labels=["UNREAD"],
+            )
+        if moved_emails:
+            by_cat: dict[str, list[str]] = defaultdict(list)
+            for e in moved_emails:
+                by_cat[e.category or "primary"].append(e.gmail_message_id)
+            for cat, cat_msg_ids in by_cat.items():
+                label_id = await self._email_service.get_or_create_label(
+                    credentials=credentials, label_name=cat,
+                )
+                await self._email_service.modify_messages(
+                    credentials=credentials,
+                    message_ids=cat_msg_ids,
+                    remove_labels=[label_id],
+                )
+        if unsub_msg_ids:
+            await self._email_service.modify_messages(
+                credentials=credentials,
+                message_ids=unsub_msg_ids,
+                add_labels=["INBOX"],
+                remove_labels=["SPAM"],
+            )
+
+        await self._classified_email_repo.pop_last_action(
+            email_ids=[e.id for e in actionable]
+        )
 
     async def _auto_apply_actions(
             self,

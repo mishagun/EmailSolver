@@ -95,6 +95,114 @@ class TestParseMessage:
         assert result.has_unsubscribe is False
 
 
+class TestExtractGmailCategory:
+    def test_social_label(self) -> None:
+        # Arrange
+        label_ids = ["INBOX", "CATEGORY_SOCIAL"]
+        # Act
+        result = GmailService._extract_gmail_category(label_ids=label_ids)
+        # Assert
+        assert result == "social"
+
+    def test_promotions_label(self) -> None:
+        # Arrange
+        label_ids = ["CATEGORY_PROMOTIONS"]
+        # Act
+        result = GmailService._extract_gmail_category(label_ids=label_ids)
+        # Assert
+        assert result == "promotions"
+
+    def test_updates_label(self) -> None:
+        # Arrange
+        label_ids = ["CATEGORY_UPDATES"]
+        # Act
+        result = GmailService._extract_gmail_category(label_ids=label_ids)
+        # Assert
+        assert result == "updates"
+
+    def test_forums_label(self) -> None:
+        # Arrange
+        label_ids = ["CATEGORY_FORUMS"]
+        # Act
+        result = GmailService._extract_gmail_category(label_ids=label_ids)
+        # Assert
+        assert result == "forums"
+
+    def test_personal_label_maps_to_primary(self) -> None:
+        # Arrange
+        label_ids = ["CATEGORY_PERSONAL"]
+        # Act
+        result = GmailService._extract_gmail_category(label_ids=label_ids)
+        # Assert
+        assert result == "primary"
+
+    def test_no_category_labels_defaults_to_primary(self) -> None:
+        # Arrange
+        label_ids = ["INBOX", "UNREAD"]
+        # Act
+        result = GmailService._extract_gmail_category(label_ids=label_ids)
+        # Assert
+        assert result == "primary"
+
+    def test_empty_labels_defaults_to_primary(self) -> None:
+        # Arrange
+        label_ids: list[str] = []
+        # Act
+        result = GmailService._extract_gmail_category(label_ids=label_ids)
+        # Assert
+        assert result == "primary"
+
+    def test_multiple_labels_with_category(self) -> None:
+        # Arrange
+        label_ids = ["INBOX", "UNREAD", "CATEGORY_PROMOTIONS", "IMPORTANT"]
+        # Act
+        result = GmailService._extract_gmail_category(label_ids=label_ids)
+        # Assert
+        assert result == "promotions"
+
+
+class TestParseMessageGmailCategory:
+    def test_extracts_gmail_category_from_label_ids(self) -> None:
+        # Arrange
+        message = {
+            "id": "msg-1",
+            "labelIds": ["INBOX", "CATEGORY_PROMOTIONS"],
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "shop@example.com"},
+                    {"name": "Subject", "value": "Sale!"},
+                ]
+            },
+        }
+        # Act
+        result = GmailService._parse_message(message=message)
+        # Assert
+        assert result.gmail_category == "promotions"
+
+    def test_no_category_label_defaults_to_primary(self) -> None:
+        # Arrange
+        message = {
+            "id": "msg-2",
+            "labelIds": ["INBOX", "UNREAD"],
+            "payload": {"headers": []},
+        }
+        # Act
+        result = GmailService._parse_message(message=message)
+        # Assert
+        assert result.gmail_category == "primary"
+
+    def test_no_label_ids_key_defaults_to_primary(self) -> None:
+        # Arrange
+        message = {
+            "id": "msg-3",
+            "payload": {"headers": []},
+        }
+        # Act
+        result = GmailService._parse_message(message=message)
+        # Assert
+        assert result.gmail_category == "primary"
+
+
 class TestListMessages:
     @pytest.mark.asyncio
     async def test_list_messages_calls_gmail_api(

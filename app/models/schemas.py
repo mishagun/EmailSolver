@@ -30,6 +30,7 @@ class EmailMetadata(BaseModel):
     has_unsubscribe: bool = False
     unsubscribe_header: str | None = None
     unsubscribe_post_header: str | None = None
+    gmail_category: str | None = None
 
 
 class EmailListResponse(BaseModel):
@@ -43,12 +44,18 @@ class EmailStatsResponse(BaseModel):
     total_count: int
 
 
+class AnalysisType(StrEnum):
+    INBOX_SCAN = "inbox_scan"
+    AI_ANALYSIS = "ai"
+
+
 class ActionType(StrEnum):
     KEEP = "keep"
     MOVE_TO_CATEGORY = "move_to_category"
     MARK_READ = "mark_read"
     MARK_SPAM = "mark_spam"
     UNSUBSCRIBE = "unsubscribe"
+    UNDO = "undo"
 
 
 class ClassificationResult(BaseModel):
@@ -83,6 +90,7 @@ class SenderGroupSummary(BaseModel):
 
 
 class AnalysisCreateRequest(BaseModel):
+    analysis_type: AnalysisType = AnalysisType.AI_ANALYSIS
     query: str = "is:unread"
     max_emails: int = 100
     auto_apply: bool = False
@@ -110,6 +118,7 @@ class ClassifiedEmailResponse(BaseModel):
 
 class AnalysisResponse(BaseModel):
     id: int
+    analysis_type: str = "ai"
     status: str
     query: str | None = None
     total_emails: int | None = None
