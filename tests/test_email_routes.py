@@ -57,8 +57,8 @@ class TestEmailStats:
     async def test_stats_returns_counts(
         self, authenticated_client, mock_email_service: GmailService
     ) -> None:
-        mock_email_service.list_messages = AsyncMock(
-            side_effect=[["msg-1"], ["msg-1", "msg-2", "msg-3"]]
+        mock_email_service.get_inbox_counts = AsyncMock(
+            return_value={"unread_count": 42, "total_count": 150}
         )
         authenticated_client._transport.app.dependency_overrides[get_email_service] = (
             lambda: mock_email_service
@@ -66,8 +66,8 @@ class TestEmailStats:
         response = await authenticated_client.get("/api/v1/emails/stats")
         assert response.status_code == 200
         data = response.json()
-        assert data["unread_count"] == 1
-        assert data["total_count"] == 3
+        assert data["unread_count"] == 42
+        assert data["total_count"] == 150
 
     @pytest.mark.asyncio
     async def test_stats_rejects_unauthenticated(self, test_client) -> None:

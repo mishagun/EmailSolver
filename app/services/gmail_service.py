@@ -86,6 +86,14 @@ class GmailService(BaseEmailService):
             remove_labels=remove_labels,
         )
 
+    async def get_inbox_counts(
+        self, *, credentials: Credentials
+    ) -> dict[str, int]:
+        return await asyncio.to_thread(
+            self._get_inbox_counts_sync,
+            credentials=credentials,
+        )
+
     async def trash_messages(
         self, *, credentials: Credentials, message_ids: list[str]
     ) -> None:
@@ -256,6 +264,15 @@ class GmailService(BaseEmailService):
                 userId="me",
                 body={"ids": chunk, **body},
             ).execute()
+
+    @staticmethod
+    def _get_inbox_counts_sync(*, credentials: Credentials) -> dict[str, int]:
+        service = build("gmail", "v1", credentials=credentials)
+        label = service.users().labels().get(userId="me", id="INBOX").execute()
+        return {
+            "unread_count": label.get("messagesUnread", 0),
+            "total_count": label.get("messagesTotal", 0),
+        }
 
     @staticmethod
     def _trash_messages_sync(

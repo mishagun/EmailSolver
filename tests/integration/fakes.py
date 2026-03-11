@@ -125,6 +125,9 @@ class FakeEmailService(BaseEmailService):
         self.labels_created[label_name] = label_id
         return label_id
 
+    async def get_inbox_counts(self, *, credentials: Any) -> dict[str, int]:
+        return {"unread_count": len(self.emails), "total_count": len(self.emails)}
+
     async def trash_messages(
         self, *, credentials: Any, message_ids: list[str]
     ) -> None:

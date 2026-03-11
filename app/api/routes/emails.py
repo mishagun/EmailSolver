@@ -48,13 +48,8 @@ async def email_stats(
             encrypted_token=user.encrypted_refresh_token
         ),
     )
-    unread_ids = await email_service.list_messages(
-        credentials=credentials, label_ids=["UNREAD"], max_results=1
-    )
-    total_ids = await email_service.list_messages(
-        credentials=credentials, max_results=1
-    )
+    counts = await email_service.get_inbox_counts(credentials=credentials)
     return EmailStatsResponse(
-        unread_count=len(unread_ids),
-        total_count=len(total_ids),
+        unread_count=counts["unread_count"],
+        total_count=counts["total_count"],
     )

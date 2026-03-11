@@ -43,6 +43,11 @@ class BaseEmailService(ABC):
     ) -> str: ...
 
     @abstractmethod
+    async def get_inbox_counts(
+        self, *, credentials: Any
+    ) -> dict[str, int]: ...
+
+    @abstractmethod
     async def trash_messages(
         self, *, credentials: Any, message_ids: list[str]
     ) -> None: ...
