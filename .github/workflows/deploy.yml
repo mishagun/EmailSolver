@@ -3,6 +3,11 @@ name: Deploy to EC2
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - 'CHANGELOG.md'
+      - 'LICENSE'
 
 env:
   REGISTRY: ghcr.io

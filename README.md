@@ -1,49 +1,101 @@
-# EmailSolver
+# TidyInbox
 
-Gmail inbox analyzer and cleaner with AI-powered email classification. Uses a two-pass AI system to classify emails, recommend actions per category, and apply them via the Gmail API.
+AI-powered Gmail inbox cleaner. Scans your inbox, classifies emails into categories using Claude AI, and lets you bulk-apply actions (mark read, move, spam, unsubscribe) with full undo support.
+
+## How It Works
+
+1. **Scan** -- reads your inbox via Gmail API, extracts sender, subject, and metadata
+2. **Classify** -- two-pass AI system: first classifies emails into categories, then verifies and recommends actions per category
+3. **Act** -- bulk mark as read, move to category, mark spam, or one-click unsubscribe
+4. **Undo** -- every action is reversible with full action history
+
+Two analysis modes:
+- **Inbox scan** -- fast, groups by Gmail's built-in categories. No AI needed.
+- **AI analysis** -- classifies each email with Claude. Assigns categories, importance (1-5), sender type, confidence scores. Generates witty insights about your inbox.
 
 ## Features
 
-- **Two-pass AI classification** -- Pass 1 classifies emails into dynamic categories (base + custom). Pass 2 verifies categories, merges duplicates, and recommends actions.
-- **Dynamic categories** -- Base set (primary, promotions, social, updates, spam, newsletters, receipts) plus user-provided custom categories. AI can create new ones on the fly.
-- **Per-category action recommendations** -- AI recommends actions per category (e.g., promotions -> mark_read, move_to_category). Frontend shows these as buttons.
-- **Summary view** -- GET /analysis/{id} returns category counts + recommended actions alongside the email list.
-- **Flexible action application** -- Apply actions filtered by category, sender domain, or specific email IDs.
-- **Auto-apply mode** -- Optionally apply the top recommended action per category automatically.
+- **Dynamic categories** -- base set (primary, promotions, social, updates, spam, newsletters, receipts) plus user-provided custom categories. AI can create new ones on the fly.
+- **Batch API for large inboxes** -- 500+ emails use Anthropic Message Batches API (50% cheaper, processes in background)
+- **Sender grouping** -- group emails by sender domain, apply actions per sender
+- **AI insights** -- dry observations about your inbox patterns ("93% of your inbox is stuff no human wrote")
+- **Real-time unsubscribe** -- RFC 8058 one-click HTTP POST unsubscribe, falls back to mark spam
+- **OAuth with PKCE** -- server-side state store with replay protection
+- **Concurrent classification** -- batches of 20, 2 concurrent, with retry on rate limits
+
+## Interfaces
+
+### Web Frontend
+
+React + TypeScript + Vite. Brutalist design with IBM Plex Mono, all lowercase, warm off-white background.
+
+```bash
+cd web && npm install && npm run dev
+# Opens at http://localhost:5173
+```
+
+Set `VITE_API_BASE_URL` if backend isn't at `http://localhost:8000`.
+
+**Pages:** Login (Google OAuth) -> Dashboard (inbox stats, create analysis, analysis history) -> Analysis (categories/emails/insights tabs, action bar, keyboard shortcuts)
+
+**Keyboard shortcuts:** `k` keep, `m` mark read, `v` move to category, `s` mark spam, `u` unsubscribe, `z` undo, `g` group by sender, `Escape` back, `r` refresh
+
+### Terminal UI (TUI)
+
+Built with [Textual](https://textual.textualize.io/). Full terminal interface with the same functionality as the web frontend.
+
+```bash
+# Install TUI dependencies
+uv pip install -e ".[tui]"
+
+# Run (backend must be running)
+uv run python -m tui
+```
+
+**Flow:** Login (browser OAuth) -> Dashboard -> Analysis (Summary/Emails/Senders tabs) -> Email detail modal
+
+**Configuration** via environment variables (prefix `TIDYINBOX_TUI_`):
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TIDYINBOX_TUI_BASE_URL` | `http://localhost:8000` | Backend API URL |
+| `TIDYINBOX_TUI_POLL_INTERVAL_SECONDS` | `2.0` | Analysis polling interval |
+
+Token persisted at `~/.tidyinbox/token`.
 
 ## Tech Stack
 
 - **Backend:** FastAPI, Python 3.13+, async/await
 - **Database:** PostgreSQL + SQLAlchemy 2.0 (async)
-- **AI:** Anthropic Claude (Haiku) via official SDK
-- **Auth:** Google OAuth 2.0 with JWT sessions
-- **Email:** Gmail API (read, modify, label management)
+- **AI:** Anthropic Claude via official SDK
+- **Auth:** Google OAuth 2.0 with PKCE + JWT sessions
+- **Email:** Gmail API (read, modify, label management, unsubscribe)
+- **Web:** React 18, TypeScript, Vite, React Router v6
+- **TUI:** Textual, httpx
 - **Migrations:** Alembic
-- **Security:** Fernet symmetric encryption for tokens
+- **Security:** Fernet symmetric encryption for tokens, JWT revocation denylist
+- **CI/CD:** GitHub Actions -> GHCR -> Docker Compose on EC2
 
-## Self-Hosting Guide
+## Self-Hosting
 
-EmailSolver is designed to run locally — your email data stays on your machine and goes directly to the AI provider you configure. No central server involved.
+Your email data stays on your machine. Only email metadata (sender, subject, snippet) is sent to the AI provider for classification. Results are stored locally and expire after 7 days.
 
 ### Prerequisites
 
 - Python 3.13+ (or Docker)
 - [uv](https://docs.astral.sh/uv/) package manager
 - Docker (for PostgreSQL, or bring your own)
-- Google Cloud project (free) — for Gmail API access
-- Anthropic API key — for email classification
+- Google Cloud project (free) -- for Gmail API access
+- Anthropic API key -- for email classification
 
 ### Step 1: Google Cloud Setup
-
-You need OAuth credentials so EmailSolver can read your Gmail.
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create a new project
 2. Enable the **Gmail API**: APIs & Services > Library > search "Gmail API" > Enable
 3. Configure the **OAuth consent screen**: APIs & Services > OAuth consent screen
    - Choose "External" user type
-   - Fill in app name (e.g., "EmailSolver") and your email
+   - Fill in app name and your email
    - Add scopes: `gmail.readonly`, `gmail.modify`, `gmail.labels`
-   - Add your Google account as a test user (required while app is in "Testing" status)
+   - Add your Google account as a test user
 4. Create **OAuth credentials**: APIs & Services > Credentials > Create Credentials > OAuth client ID
    - Application type: "Web application"
    - Authorized redirect URIs: `http://localhost:8000/api/v1/auth/callback`
@@ -51,105 +103,55 @@ You need OAuth credentials so EmailSolver can read your Gmail.
 
 ### Step 2: Anthropic API Key
 
-1. Go to [console.anthropic.com](https://console.anthropic.com/) and create an account
-2. Go to API Keys > Create Key
-3. Copy the key — you'll need it for `.env`
+1. Go to [console.anthropic.com](https://console.anthropic.com/)
+2. Create API Key, copy it
 
 ### Step 3: Install and Configure
 
 ```bash
-# Clone and install
 git clone https://github.com/mishagun/EmailSolver.git
 cd EmailSolver
 uv sync --dev
 
 # Start PostgreSQL
-docker compose up -d postgres
+docker compose -f docker-compose.local.yml up -d postgres
 
-# Configure environment
+# Configure
 cp .env.example .env
 ```
 
-Edit `.env` with your credentials:
+Edit `.env`:
 
 ```bash
-# Database (default works with the docker compose postgres)
 DATABASE_URL=postgresql+asyncpg://emailsolver:emailsolver@localhost:5432/emailsolver
-
-# Generate a random JWT secret (e.g.: openssl rand -hex 32)
-JWT_SECRET_KEY=<your-random-secret>
-
-# Google OAuth (from Step 1)
+JWT_SECRET_KEY=<openssl rand -hex 32>
 GOOGLE_CLIENT_ID=<your-client-id>.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=<your-client-secret>
 GOOGLE_REDIRECT_URI=http://localhost:8000/api/v1/auth/callback
-
-# Generate a Fernet key:
-#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-FERNET_KEY=<your-fernet-key>
-
-# Anthropic (from Step 2)
+FERNET_KEY=<python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ### Step 4: Run
 
 ```bash
-# Run database migrations
 uv run alembic upgrade head
-
-# Start the server
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-The server is now running at `http://localhost:8000`. Open `http://localhost:8000/api/v1/auth/login` in your browser to authenticate with Google.
+Backend at `http://localhost:8000`. Web frontend at `http://localhost:5173` (after `cd web && npm run dev`).
 
-### Docker Deployment (Alternative)
-
-Instead of steps 3-4, you can run everything in Docker:
+### Docker Deployment
 
 ```bash
 cp .env.example .env
-# Edit .env with your credentials (same as above)
-
-# Full deployment (builds, migrates, starts)
-bash scripts/deploy.sh
-
-# Or manually
+# Edit .env with your credentials
 docker compose up
 ```
 
-Docker Compose runs a one-shot `migrations` service before starting the app.
+Docker Compose runs migrations automatically before starting the app.
 
-### Privacy Note
-
-When you self-host EmailSolver, your email data flows directly from your machine to the Anthropic API for classification. Only email metadata (sender, subject, snippet) is sent — not full email bodies. No data is stored on any third-party server. Classification results are stored in your local PostgreSQL database and automatically expire after 7 days (configurable via `CLASSIFIED_EMAIL_TTL_DAYS`).
-
-## Terminal UI (TUI)
-
-A full terminal interface for EmailSolver, built with [Textual](https://textual.textualize.io/).
-
-```bash
-# Install TUI dependencies
-uv pip install -e ".[tui]"
-
-# Run the TUI (backend must be running)
-uv run python -m tui
-# or
-uv run emailsolver-tui
-```
-
-**Flow:** Login (paste JWT from browser OAuth) → Dashboard (inbox stats, analyses) → Create Analysis (watch progress) → Browse categories/emails → Apply actions.
-
-**Configuration** via environment variables (prefix `EMAILSOLVER_TUI_`):
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `EMAILSOLVER_TUI_BASE_URL` | `http://localhost:8000` | Backend API URL |
-| `EMAILSOLVER_TUI_POLL_INTERVAL_SECONDS` | `2.0` | Analysis polling interval |
-
-Token is persisted at `~/.emailsolver/token`.
-
-## API Overview
+## API
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -157,37 +159,35 @@ Token is persisted at `~/.emailsolver/token`.
 | GET | `/api/v1/auth/login` | Start OAuth flow |
 | GET | `/api/v1/auth/callback` | OAuth callback |
 | GET | `/api/v1/auth/status` | Check auth status |
-| POST | `/api/v1/auth/logout` | Revoke tokens |
+| DELETE | `/api/v1/auth/logout` | Revoke tokens |
 | GET | `/api/v1/emails` | List emails from Gmail |
-| GET | `/api/v1/emails/stats` | Email counts |
+| GET | `/api/v1/emails/stats` | Inbox unread/total counts |
 | POST | `/api/v1/analysis` | Start analysis (async, 202) |
 | GET | `/api/v1/analysis` | List analyses |
-| GET | `/api/v1/analysis/{id}` | Get analysis with summary + emails |
+| GET | `/api/v1/analysis/{id}` | Get analysis with summary + emails + insights |
+| GET | `/api/v1/analysis/{id}/senders` | Get sender groups (optionally by category) |
 | POST | `/api/v1/analysis/{id}/apply` | Apply action with filters |
 | DELETE | `/api/v1/analysis/{id}` | Delete analysis |
 
-See [docs/api.md](docs/api.md) for full endpoint reference with request/response examples.
-
-## Documentation
-
-- [API Reference](docs/api.md) -- Full endpoint documentation
-- [Architecture](docs/architecture.md) -- Business logic, two-pass AI flow, data model
-- [Frontend Guide](docs/frontend-guide.md) -- UI integration guide with code examples
+See [docs/api.md](docs/api.md) for full endpoint reference.
 
 ## Development
 
 ```bash
-# Run tests (backend)
-uv run pytest tests/ -v
-
-# Run tests (TUI)
-uv run pytest tests/tui/ -v
+# Backend tests
+uv run pytest tests/ -x -q
 
 # Lint
-uv run ruff check app/ tui/ tests/
+uv run ruff check .
 
-# Type check
+# Type check (backend)
 uv run mypy app/
+
+# Frontend tests
+cd web && npm test
+
+# Frontend type check
+cd web && npx tsc --noEmit
 
 # Create a migration
 uv run alembic revision --autogenerate -m "description"
@@ -197,21 +197,31 @@ uv run alembic revision --autogenerate -m "description"
 
 ```
 app/
-  api/routes/       # FastAPI route handlers
-  core/             # Config, database, protocols, security, DI
-  models/           # SQLAlchemy models + Pydantic schemas
-  repositories/     # Data access layer
-  services/         # Business logic (analysis, classification, Gmail, auth)
+  api/routes/          # FastAPI route handlers (auth, analysis, emails)
+  core/                # Config, database, protocols, security, DI
+  models/              # SQLAlchemy models (db.py) + Pydantic schemas (schemas.py)
+  repositories/        # Data access layer
+  services/            # Business logic (analysis, classification, gmail, auth)
+web/
+  src/
+    api/               # Typed fetch client + TS interfaces
+    components/        # Layout, ActionBar, AnalysisProgress, EmailDetailModal, InsightsTab
+    context/           # AuthContext (JWT in localStorage)
+    hooks/             # useAuth, usePolling
+    pages/             # LoginPage, CallbackPage, DashboardPage, AnalysisPage
+    styles/            # CSS variables, global styles, animations
+    test/              # Test setup, fixtures, render utils
 tui/
-  screens/          # Textual screens (login, dashboard, analysis, email detail)
-  styles/           # Textual CSS
-  app.py            # Main Textual App
-  client.py         # Typed async API client
-  models.py         # Pydantic models (mirrors backend schemas)
-  config.py         # TUI configuration
-tests/              # Pytest test suite (includes tests/tui/)
-alembic/            # Database migrations
-docs/               # API reference, architecture, frontend guide
+  screens/             # Textual screens (login, dashboard, analysis, email detail)
+  styles/              # Textual CSS
+  app.py               # Main Textual App
+  client.py            # Typed async httpx API client
+  models.py            # Pydantic models (mirrors backend schemas)
+  config.py            # TUI configuration
+tests/                 # Pytest test suite (includes tests/tui/)
+alembic/               # Database migrations
+docs/                  # API reference, architecture, frontend guide
+scripts/               # Deployment + E2E test scripts
 ```
 
 ## License
