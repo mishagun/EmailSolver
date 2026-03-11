@@ -8,7 +8,7 @@ class TestTuiConfig:
         config = TuiConfig()
         assert config.base_url == "http://localhost:8000"
         assert config.poll_interval_seconds == 2.0
-        assert config.token_path == Path.home() / ".emailsolver" / "token"
+        assert config.token_path == Path.home() / ".tidyinbox" / "token"
 
     def test_custom_values(self) -> None:
         config = TuiConfig(

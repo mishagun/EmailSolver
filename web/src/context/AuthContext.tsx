@@ -13,7 +13,7 @@ interface AuthContextValue extends AuthState {
   logout: () => Promise<void>;
 }
 
-const TOKEN_KEY = 'emailsolver_token';
+const TOKEN_KEY = 'tidyinbox_token';
 
 export const AuthContext = createContext<AuthContextValue>({
   authenticated: false,

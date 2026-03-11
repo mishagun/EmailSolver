@@ -47,7 +47,7 @@ class LoginScreen(AppScreen):
 
     def compose(self) -> ComposeResult:
         with Center(), Vertical(id="login-box"):
-            yield Static("emailsolver", id="login-title")
+            yield Static("tidyinbox", id="login-title")
             yield Static(
                 "Login with your Google account\nto grant access to your emails.",
                 id="login-subtitle",

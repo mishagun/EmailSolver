@@ -45,7 +45,7 @@ describe('AuthContext', () => {
 
   it('validates token from localStorage on mount', async () => {
     // Arrange
-    localStorage.setItem('emailsolver_token', 'stored-jwt');
+    localStorage.setItem('tidyinbox_token', 'stored-jwt');
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ authenticated: true, email: 'user@test.com', display_name: 'user' }),
@@ -67,7 +67,7 @@ describe('AuthContext', () => {
 
   it('clears state on 401 from stored token', async () => {
     // Arrange
-    localStorage.setItem('emailsolver_token', 'expired-jwt');
+    localStorage.setItem('tidyinbox_token', 'expired-jwt');
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 401,
@@ -87,12 +87,12 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('loading').textContent).toBe('false');
     });
     expect(screen.getByTestId('auth').textContent).toBe('false');
-    expect(localStorage.getItem('emailsolver_token')).toBeNull();
+    expect(localStorage.getItem('tidyinbox_token')).toBeNull();
   });
 
   it('clears state on logout', async () => {
     // Arrange
-    localStorage.setItem('emailsolver_token', 'valid-jwt');
+    localStorage.setItem('tidyinbox_token', 'valid-jwt');
     mockFetch
       .mockResolvedValueOnce({
         ok: true,
@@ -122,6 +122,6 @@ describe('AuthContext', () => {
     await waitFor(() => {
       expect(screen.getByTestId('auth').textContent).toBe('false');
     });
-    expect(localStorage.getItem('emailsolver_token')).toBeNull();
+    expect(localStorage.getItem('tidyinbox_token')).toBeNull();
   });
 });

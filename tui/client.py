@@ -20,7 +20,7 @@ class ApiError(Exception):
         super().__init__(f"[{status_code}] {detail}")
 
 
-class EmailSolverClient:
+class TidyInboxClient:
     def __init__(self, *, base_url: str) -> None:
         self._base_url = base_url
         self._token: str | None = None

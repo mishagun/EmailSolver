@@ -20,7 +20,7 @@ export class ApiError extends Error {
   }
 }
 
-class EmailSolverClient {
+class TidyInboxClient {
   private baseUrl: string;
   private token: string | null = null;
 
@@ -117,4 +117,4 @@ class EmailSolverClient {
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-export const apiClient = new EmailSolverClient(API_BASE);
+export const apiClient = new TidyInboxClient(API_BASE);

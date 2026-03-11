@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from tui.app import EmailSolverApp
+from tui.app import TidyInboxApp
 from tui.client import ApiError
 from tui.config import TuiConfig
 from tui.models import (
@@ -30,7 +30,7 @@ def _make_config(tmp_path: Path) -> TuiConfig:
     )
 
 
-class _NoAuthApp(EmailSolverApp):
+class _NoAuthApp(TidyInboxApp):
     CSS_PATH: ClassVar[list[str]] = []
 
     def check_auth(self) -> None:  # type: ignore[override]
@@ -402,7 +402,7 @@ class TestEmailDetailScreen:
 class TestAppTokenPersistence:
     async def test_save_and_load_token(self, tmp_path: Path) -> None:
         config = _make_config(tmp_path)
-        app = EmailSolverApp(config=config)
+        app = TidyInboxApp(config=config)
         app.save_token(token="test-jwt-token")
 
         assert (tmp_path / "token").read_text() == "test-jwt-token"
@@ -410,7 +410,7 @@ class TestAppTokenPersistence:
 
     async def test_clear_saved_token(self, tmp_path: Path) -> None:
         config = _make_config(tmp_path)
-        app = EmailSolverApp(config=config)
+        app = TidyInboxApp(config=config)
         app.save_token(token="test-jwt-token")
         app.clear_saved_token()
 
@@ -419,14 +419,14 @@ class TestAppTokenPersistence:
 
     async def test_load_token_file_missing(self, tmp_path: Path) -> None:
         config = _make_config(tmp_path)
-        app = EmailSolverApp(config=config)
+        app = TidyInboxApp(config=config)
         result = app._load_token()
         assert result is None
 
     async def test_load_token_file_empty(self, tmp_path: Path) -> None:
         config = _make_config(tmp_path)
         (tmp_path / "token").write_text("")
-        app = EmailSolverApp(config=config)
+        app = TidyInboxApp(config=config)
         result = app._load_token()
         assert result is None
 
@@ -435,13 +435,13 @@ class TestAppTokenPersistence:
     ) -> None:
         config = _make_config(tmp_path)
         (tmp_path / "token").write_text("  jwt-token  \n")
-        app = EmailSolverApp(config=config)
+        app = TidyInboxApp(config=config)
         result = app._load_token()
         assert result == "jwt-token"
 
     async def test_save_token_sets_owner_only_permissions(self, tmp_path: Path) -> None:
         config = _make_config(tmp_path)
-        app = EmailSolverApp(config=config)
+        app = TidyInboxApp(config=config)
         app.save_token(token="test-jwt-token")
 
         token_file = tmp_path / "token"

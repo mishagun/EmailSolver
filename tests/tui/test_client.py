@@ -5,18 +5,18 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from tui.client import ApiError, EmailSolverClient
+from tui.client import ApiError, TidyInboxClient
 from tui.models import ActionType, AnalysisCreateRequest, ApplyActionsRequest
 
 
 @pytest.fixture
-def client() -> EmailSolverClient:
-    return EmailSolverClient(base_url="http://test:8000")
+def client() -> TidyInboxClient:
+    return TidyInboxClient(base_url="http://test:8000")
 
 
 @asynccontextmanager
 async def mock_request(
-    client: EmailSolverClient, *, response: httpx.Response
+    client: TidyInboxClient, *, response: httpx.Response
 ) -> AsyncGenerator[AsyncMock]:
     with patch.object(
         client._client,
@@ -28,26 +28,26 @@ async def mock_request(
 
 
 class TestClientAuth:
-    def test_initial_state_unauthenticated(self, client: EmailSolverClient) -> None:
+    def test_initial_state_unauthenticated(self, client: TidyInboxClient) -> None:
         assert client.is_authenticated is False
 
-    def test_set_token(self, client: EmailSolverClient) -> None:
+    def test_set_token(self, client: TidyInboxClient) -> None:
         client.set_token(token="jwt-123")
         assert client.is_authenticated is True
 
-    def test_clear_token(self, client: EmailSolverClient) -> None:
+    def test_clear_token(self, client: TidyInboxClient) -> None:
         client.set_token(token="jwt-123")
         client.clear_token()
         assert client.is_authenticated is False
 
-    def test_get_login_url(self, client: EmailSolverClient) -> None:
+    def test_get_login_url(self, client: TidyInboxClient) -> None:
         url = client.get_login_url()
         assert url == "http://test:8000/api/v1/auth/login"
 
 
 class TestClientApiCalls:
     @pytest.fixture(autouse=True)
-    def _setup(self, client: EmailSolverClient) -> None:
+    def _setup(self, client: TidyInboxClient) -> None:
         client.set_token(token="jwt-123")
         self.client = client
 
@@ -183,7 +183,7 @@ class TestClientApiCalls:
 
 class TestClientErrors:
     @pytest.fixture(autouse=True)
-    def _setup(self, client: EmailSolverClient) -> None:
+    def _setup(self, client: TidyInboxClient) -> None:
         client.set_token(token="jwt-123")
         self.client = client
 
@@ -231,7 +231,7 @@ class TestClientErrors:
                 await self.client.get_auth_status()
             assert exc_info.value.status_code == 500
 
-    async def test_close(self, client: EmailSolverClient) -> None:
+    async def test_close(self, client: TidyInboxClient) -> None:
         mock_close = AsyncMock()
         with patch.object(client._client, "aclose", mock_close):
             await client.close()

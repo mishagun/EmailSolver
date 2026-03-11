@@ -13,7 +13,7 @@ export function Layout() {
   return (
     <div className="container">
       <header className="flex-between" style={{ padding: '16px 0', borderBottom: 'var(--border)' }}>
-        <span style={{ fontWeight: 700, fontSize: 18 }}>emailsolver</span>
+        <span style={{ fontWeight: 700, fontSize: 18 }}>tidyinbox</span>
         <div className="flex gap-16" style={{ alignItems: 'center' }}>
           {email && <span className="muted">{email}</span>}
           <button onClick={handleLogout}>logout</button>

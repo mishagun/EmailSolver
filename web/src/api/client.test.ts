@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiError, apiClient } from './client';
 
-describe('EmailSolverClient', () => {
+describe('TidyInboxClient', () => {
   const mockFetch = vi.fn();
 
   beforeEach(() => {

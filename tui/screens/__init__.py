@@ -5,18 +5,18 @@ from typing import TYPE_CHECKING
 from textual.screen import ModalScreen, Screen
 
 if TYPE_CHECKING:
-    from tui.app import EmailSolverApp
-    from tui.client import EmailSolverClient
+    from tui.app import TidyInboxApp
+    from tui.client import TidyInboxClient
     from tui.config import TuiConfig
 
 
 class AppScreen(Screen):
     @property
-    def email_app(self) -> EmailSolverApp:
+    def email_app(self) -> TidyInboxApp:
         return self.app  # type: ignore[return-value]
 
     @property
-    def client(self) -> EmailSolverClient:
+    def client(self) -> TidyInboxClient:
         return self.email_app.client
 
     @property
@@ -26,9 +26,9 @@ class AppScreen(Screen):
 
 class AppModalScreen(ModalScreen[None]):
     @property
-    def email_app(self) -> EmailSolverApp:
+    def email_app(self) -> TidyInboxApp:
         return self.app  # type: ignore[return-value]
 
     @property
-    def client(self) -> EmailSolverClient:
+    def client(self) -> TidyInboxClient:
         return self.email_app.client

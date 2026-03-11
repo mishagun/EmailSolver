@@ -3,16 +3,16 @@ import stat
 from textual import work
 from textual.app import App
 
-from tui.client import EmailSolverClient
+from tui.client import TidyInboxClient
 from tui.config import TuiConfig, tui_config
 from tui.screens.analysis import AnalysisScreen
 from tui.screens.dashboard import DashboardScreen
 from tui.screens.login import LoginScreen
 
 
-class EmailSolverApp(App):
+class TidyInboxApp(App):
     CSS_PATH = "styles/app.tcss"
-    TITLE = "EmailSolver"
+    TITLE = "TidyInbox"
 
     BINDINGS = [
         ("q", "quit", "Quit"),
@@ -21,7 +21,7 @@ class EmailSolverApp(App):
     def __init__(self, *, config: TuiConfig | None = None) -> None:
         super().__init__()
         self.tui_config = config or tui_config
-        self.client = EmailSolverClient(base_url=self.tui_config.base_url)
+        self.client = TidyInboxClient(base_url=self.tui_config.base_url)
         self.user_email: str = ""
 
     def on_mount(self) -> None:

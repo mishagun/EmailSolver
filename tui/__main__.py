@@ -1,8 +1,8 @@
-from tui.app import EmailSolverApp
+from tui.app import TidyInboxApp
 
 
 def main() -> None:
-    app = EmailSolverApp()
+    app = TidyInboxApp()
     app.run()
 
 
