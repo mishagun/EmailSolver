@@ -396,7 +396,6 @@ class TestBatchClassification:
         email_service.get_messages_batch = AsyncMock(return_value=emails)
         email_service.modify_messages = AsyncMock()
 
-        classified_records = [make_classified_email(email_id=i, msg_id=f"msg-{i}") for i in range(600)]
         classified_email_repo = MagicMock()
         classified_email_repo.bulk_create = AsyncMock(side_effect=lambda emails: emails)
         classified_email_repo.bulk_update_category = AsyncMock()
@@ -433,7 +432,7 @@ class TestBatchClassification:
     async def test_realtime_used_when_under_threshold(self) -> None:
         # Arrange
         service = build_service()
-        mock_repo = setup_analysis_repo_mock(service=service)
+        setup_analysis_repo_mock(service=service)
 
         # Act
         await service._run_analysis(
