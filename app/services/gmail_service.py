@@ -40,12 +40,14 @@ class GmailService(BaseEmailService):
         self,
         *,
         credentials: Credentials,
-        query: str = "is:unread",
+        label_ids: list[str] | None = None,
+        query: str = "",
         max_results: int = 500,
     ) -> list[str]:
         return await asyncio.to_thread(
             self._list_messages_sync,
             credentials=credentials,
+            label_ids=label_ids,
             query=query,
             max_results=max_results,
         )
@@ -151,13 +153,23 @@ class GmailService(BaseEmailService):
 
     @staticmethod
     def _list_messages_sync(
-        *, credentials: Credentials, query: str = "is:unread", max_results: int = 500
+        *,
+        credentials: Credentials,
+        label_ids: list[str] | None = None,
+        query: str = "",
+        max_results: int = 500,
     ) -> list[str]:
         service = build("gmail", "v1", credentials=credentials)
         message_ids: list[str] = []
-        request = service.users().messages().list(
-            userId="me", q=query, maxResults=min(max_results, 500)
-        )
+        kwargs: dict = {
+            "userId": "me",
+            "maxResults": min(max_results, 500),
+        }
+        if label_ids:
+            kwargs["labelIds"] = label_ids
+        if query:
+            kwargs["q"] = query
+        request = service.users().messages().list(**kwargs)
         while request and len(message_ids) < max_results:
             response = request.execute()
             messages = response.get("messages", [])

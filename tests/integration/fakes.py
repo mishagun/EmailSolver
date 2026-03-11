@@ -4,7 +4,6 @@ from typing import Any
 
 from app.core.protocols import BaseAuthService, BaseClassificationService, BaseEmailService
 from app.models.schemas import (
-    CategoryMerge,
     ClassificationResult,
     EmailMetadata,
     VerificationResult,
@@ -159,7 +158,8 @@ class FakeClassificationService(BaseClassificationService):
         ]
 
     async def verify_categories(
-        self, *, category_samples: dict[str, list[dict]]
+        self,
+        category_samples: dict[str, list[dict]],
     ) -> VerificationResult:
         if self.should_fail:
             raise RuntimeError("Verification API unavailable")
@@ -171,6 +171,32 @@ class FakeClassificationService(BaseClassificationService):
                 for cat in category_samples
             },
         )
+
+    async def generate_insights(
+        self,
+        category_samples: dict[str, list[dict]],
+    ) -> list[str]:
+        return [
+            "5 out of 6 emails here are automated noise",
+            "only 1 email was written by an actual person",
+            "promotions outnumber real mail 2 to 1",
+        ]
+
+    async def submit_batch_classification(
+        self,
+        *,
+        email_batches: list[list[EmailMetadata]],
+        existing_categories: list[str] | None = None,
+    ) -> str:
+        return "fake-batch-id"
+
+    async def check_batch_status(self, *, batch_id: str) -> str:
+        return "ended"
+
+    async def retrieve_batch_results(
+        self, *, batch_id: str
+    ) -> dict[str, list[ClassificationResult]]:
+        return {}
 
 
 class FakeClassificationServiceWithMerge(BaseClassificationService):
@@ -199,14 +225,37 @@ class FakeClassificationServiceWithMerge(BaseClassificationService):
         return results
 
     async def verify_categories(
-        self, *, category_samples: dict[str, list[dict]]
+        self,
+        category_samples: dict[str, list[dict]],
     ) -> VerificationResult:
         return VerificationResult(
-            merges=[CategoryMerge(from_category="news_letters", to_category="newsletters")],
+            merges=[],
             category_actions={
-                cat: ["move_to_category"] for cat in category_samples if cat != "news_letters"
+                cat: ["move_to_category"] for cat in category_samples
             },
         )
+
+    async def generate_insights(
+        self,
+        category_samples: dict[str, list[dict]],
+    ) -> list[str]:
+        return ["most of this inbox is automated junk"]
+
+    async def submit_batch_classification(
+        self,
+        *,
+        email_batches: list[list[EmailMetadata]],
+        existing_categories: list[str] | None = None,
+    ) -> str:
+        return "fake-batch-id"
+
+    async def check_batch_status(self, *, batch_id: str) -> str:
+        return "ended"
+
+    async def retrieve_batch_results(
+        self, *, batch_id: str
+    ) -> dict[str, list[ClassificationResult]]:
+        return {}
 
 
 class FakeAuthService(BaseAuthService):

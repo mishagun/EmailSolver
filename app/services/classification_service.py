@@ -4,11 +4,12 @@ import re
 
 from anthropic import APIStatusError, AsyncAnthropic, Timeout
 from anthropic.types import Message, TextBlock
+from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+from anthropic.types.messages.batch_create_params import Request
 from tenacity import RetryCallState, retry, retry_if_exception, stop_after_attempt
 
 from app.core.protocols import BaseClassificationService
 from app.models.schemas import (
-    CategoryMerge,
     ClassificationResult,
     EmailMetadata,
     VerificationResult,
@@ -37,15 +38,30 @@ Return a JSON array with one object per email, each containing:
 
 Return ONLY the JSON array, no other text."""
 
+INSIGHTS_SYSTEM_PROMPT = """\
+You are an email analyst. Given a summary of someone's email categories and samples, \
+generate 8-10 short dry observations about their inbox.
+
+Focus on how much of their email is junk — newsletters they never read, promotions they ignore, \
+automated noise drowning out the few emails that actually matter. Be matter-of-fact, not clever. \
+Point out the ratio of trash to real mail. Examples of tone:
+- "93% of your inbox is stuff no human wrote"
+- "you have 4 actual emails buried under 200 promotions"
+- "linkedin alone accounts for a third of your unread"
+
+Return a JSON array of strings. Each string should be a single short sentence (under 80 chars).
+Return ONLY the JSON array, no other text."""
+
 VERIFICATION_SYSTEM_PROMPT = """Review these email categories and their sample emails.
 
-1. If any categories should be merged (duplicates/overlaps), list merges.
-2. For each final category, recommend which actions make sense from:
-   keep, mark_read, move_to_category, mark_spam, unsubscribe
+For each category, recommend which actions make sense from:
+  mark_read, move_to_category, mark_spam, unsubscribe, keep
+  The user's main goal is inbox zero — reducing unread count. \
+  Prefer mark_read as the first action for most categories. \
+  Only use keep alone for categories that need user attention (e.g., primary, important).
 
 Return JSON:
-{"merges": [{"from_category": "...", "to_category": "..."}],
- "category_actions": {"category_name": ["action1", "action2"]}}
+{{"category_actions": {{"category_name": ["action1", "action2"]}}}}
 
 Return ONLY the JSON object, no other text."""
 
@@ -168,8 +184,100 @@ class ClaudeClassificationService(BaseClassificationService):
         )
         return [ClassificationResult(**r) for r in results]
 
+    async def submit_batch_classification(
+        self,
+        *,
+        email_batches: list[list[EmailMetadata]],
+        existing_categories: list[str] | None = None,
+    ) -> str:
+        categories = existing_categories or BASE_CATEGORIES
+        system_prompt = CLASSIFICATION_SYSTEM_PROMPT.format(
+            categories=", ".join(categories)
+        )
+
+        requests: list[Request] = []
+        for batch_idx, batch_emails in enumerate(email_batches):
+            emails_data = [
+                {
+                    "gmail_message_id": e.gmail_message_id,
+                    "sender": e.sender,
+                    "sender_domain": e.sender_domain,
+                    "subject": e.subject,
+                    "snippet": e.snippet,
+                    "has_unsubscribe": e.has_unsubscribe,
+                }
+                for e in batch_emails
+            ]
+            requests.append(
+                Request(
+                    custom_id=f"batch-{batch_idx}",
+                    params=MessageCreateParamsNonStreaming(
+                        model=self._model,
+                        max_tokens=4096,
+                        system=system_prompt,
+                        messages=[{
+                            "role": "user",
+                            "content": f"Classify these emails:\n{json.dumps(emails_data)}",
+                        }],
+                    ),
+                )
+            )
+
+        logger.info(
+            "Submitting batch classification: %d requests with model=%s",
+            len(requests), self._model,
+        )
+        message_batch = await self._client.messages.batches.create(requests=requests)
+        logger.info("Batch created: id=%s", message_batch.id)
+        return message_batch.id
+
+    async def check_batch_status(self, *, batch_id: str) -> str:
+        batch = await self._client.messages.batches.retrieve(batch_id)
+        return batch.processing_status
+
+    async def retrieve_batch_results(
+        self, *, batch_id: str
+    ) -> dict[str, list[ClassificationResult]]:
+        results: dict[str, list[ClassificationResult]] = {}
+        async for result in await self._client.messages.batches.results(batch_id):
+            if result.result.type == "succeeded":
+                raw_text = _extract_json(result.result.message)
+                parsed = json.loads(raw_text)
+                results[result.custom_id] = [
+                    ClassificationResult(**r) for r in parsed
+                ]
+            else:
+                logger.warning(
+                    "Batch result %s: type=%s",
+                    result.custom_id, result.result.type,
+                )
+        return results
+
+    async def generate_insights(
+        self,
+        category_samples: dict[str, list[dict]],
+    ) -> list[str]:
+        if not category_samples:
+            return []
+
+        samples_text = json.dumps(category_samples, indent=2)
+
+        logger.info("Generating insights for %d categories", len(category_samples))
+
+        response = await self._create_message(
+            system=INSIGHTS_SYSTEM_PROMPT,
+            content=f"Email categories and samples:\n{samples_text}",
+        )
+
+        raw_text = _extract_json(response)
+        insights = json.loads(raw_text)
+        if not isinstance(insights, list):
+            return []
+        return [str(i) for i in insights if isinstance(i, str)]
+
     async def verify_categories(
-        self, *, category_samples: dict[str, list[dict]]
+        self,
+        category_samples: dict[str, list[dict]],
     ) -> VerificationResult:
         if not category_samples:
             return VerificationResult(merges=[], category_actions={})
@@ -187,7 +295,6 @@ class ClaudeClassificationService(BaseClassificationService):
         logger.debug("Verification raw JSON (first 500 chars): %s", raw_text[:500])
         data = json.loads(raw_text)
 
-        merges = [CategoryMerge(**m) for m in data.get("merges", [])]
         category_actions = data.get("category_actions", {})
 
-        return VerificationResult(merges=merges, category_actions=category_actions)
+        return VerificationResult(merges=[], category_actions=category_actions)

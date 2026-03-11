@@ -39,13 +39,6 @@ class DashboardScreen(AppScreen):
                     yield Label("Unread Only:", classes="form-label")
                     yield Switch(value=True, id="unread-only-switch")
                 with Horizontal(classes="form-row"):
-                    yield Label("Query:", classes="form-label")
-                    yield Input(
-                        placeholder="optional Gmail filter",
-                        id="query-input",
-                        classes="form-input",
-                    )
-                with Horizontal(classes="form-row"):
                     yield Label("Max Emails:", classes="form-label")
                     yield Input(
                         value="100",
@@ -74,12 +67,12 @@ class DashboardScreen(AppScreen):
 
     def on_mount(self) -> None:
         table = self.query_one("#analyses-table", DataTable)
-        table.add_columns("ID", "Type", "Status", "Query", "Progress", "Created")
+        table.add_columns("ID", "Type", "Status", "Filter", "Progress", "Created")
         table.cursor_type = "row"
         self.load_data()
 
     def action_focus_new(self) -> None:
-        self.query_one("#query-input", Input).focus()
+        self.query_one("#unread-only-switch", Switch).focus()
 
     def action_refresh(self) -> None:
         self.load_data()
@@ -125,11 +118,12 @@ class DashboardScreen(AppScreen):
                 progress = self._format_progress(analysis=a)
                 created = a.created_at.strftime("%Y-%m-%d %H:%M")
                 type_label = "scan" if a.analysis_type == AnalysisType.INBOX_SCAN else "ai"
+                filter_label = "unread" if a.unread_only else "all"
                 table.add_row(
                     str(a.id),
                     type_label,
                     a.status,
-                    a.query or "",
+                    filter_label,
                     progress,
                     created,
                     key=str(a.id),
@@ -164,9 +158,6 @@ class DashboardScreen(AppScreen):
     async def start_analysis(self, analysis_type: str = AnalysisType.AI_ANALYSIS) -> None:
         status_label = self.query_one("#dashboard-status", Label)
         unread_only = self.query_one("#unread-only-switch", Switch).value
-        query = self.query_one("#query-input", Input).value.strip()
-        if unread_only:
-            query = f"is:unread {query}".strip()
         max_emails_str = self.query_one(
             "#max-emails-input", Input
         ).value.strip()
@@ -190,7 +181,7 @@ class DashboardScreen(AppScreen):
 
         request = AnalysisCreateRequest(
             analysis_type=analysis_type,
-            query=query,
+            unread_only=unread_only,
             max_emails=max_emails,
             auto_apply=auto_apply,
             custom_categories=custom_categories,

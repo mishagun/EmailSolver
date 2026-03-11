@@ -30,10 +30,10 @@ class TestListEmails:
         data = response.json()
         assert data["total"] == 1
         assert data["emails"][0]["gmail_message_id"] == "msg-1"
-        assert data["query"] == "is:unread"
+        assert data["unread_only"] is True
 
     @pytest.mark.asyncio
-    async def test_list_emails_with_custom_query(
+    async def test_list_emails_with_unread_only_false(
         self, authenticated_client, mock_email_service: GmailService
     ) -> None:
         mock_email_service.get_messages_batch.return_value = []
@@ -41,10 +41,10 @@ class TestListEmails:
             lambda: mock_email_service
         )
         response = await authenticated_client.get(
-            "/api/v1/emails", params={"query": "from:alice@example.com"}
+            "/api/v1/emails", params={"unread_only": "false"}
         )
         assert response.status_code == 200
-        assert response.json()["query"] == "from:alice@example.com"
+        assert response.json()["unread_only"] is False
 
     @pytest.mark.asyncio
     async def test_list_emails_rejects_unauthenticated(self, test_client) -> None:

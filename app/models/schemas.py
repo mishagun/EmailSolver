@@ -36,7 +36,7 @@ class EmailMetadata(BaseModel):
 class EmailListResponse(BaseModel):
     emails: list[EmailMetadata]
     total: int
-    query: str
+    unread_only: bool = True
 
 
 class EmailStatsResponse(BaseModel):
@@ -91,8 +91,8 @@ class SenderGroupSummary(BaseModel):
 
 class AnalysisCreateRequest(BaseModel):
     analysis_type: AnalysisType = AnalysisType.AI_ANALYSIS
-    query: str = "is:unread"
-    max_emails: int = 100
+    unread_only: bool = True
+    max_emails: int = 500
     auto_apply: bool = False
     custom_categories: list[str] | None = None
 
@@ -120,14 +120,16 @@ class AnalysisResponse(BaseModel):
     id: int
     analysis_type: str = "ai"
     status: str
-    query: str | None = None
+    unread_only: bool = True
     total_emails: int | None = None
     processed_emails: int | None = None
+    use_batch: bool = False
     error_message: str | None = None
     created_at: datetime
     completed_at: datetime | None = None
     summary: list[CategorySummary] | None = None
     classified_emails: list[ClassifiedEmailResponse] | None = None
+    ai_insights: list[str] | None = None
 
 
 class AnalysisListResponse(BaseModel):

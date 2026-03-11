@@ -122,7 +122,7 @@ describe('EmailSolverClient', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          id: 1, status: 'pending', query: 'is:unread',
+          id: 1, status: 'pending', unread_only: true,
           total_emails: null, processed_emails: null, error_message: null,
           created_at: '2026-01-01T00:00:00Z', completed_at: null,
           summary: null, classified_emails: null,
@@ -131,13 +131,13 @@ describe('EmailSolverClient', () => {
 
       // Act
       const result = await apiClient.createAnalysis({
-        query: 'is:unread',
+        unread_only: true,
         max_emails: 50,
       });
 
       // Assert
       expect(mockFetch.mock.calls[0][1].method).toBe('POST');
-      expect(mockFetch.mock.calls[0][1].body).toBe(JSON.stringify({ query: 'is:unread', max_emails: 50 }));
+      expect(mockFetch.mock.calls[0][1].body).toBe(JSON.stringify({ unread_only: true, max_emails: 50 }));
       expect(result.id).toBe(1);
     });
   });

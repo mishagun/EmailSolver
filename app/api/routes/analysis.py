@@ -39,7 +39,7 @@ async def create_analysis(
             user_id=user.id,
             analysis_type=request.analysis_type.value,
             status="pending",
-            query=request.query,
+            unread_only=request.unread_only,
         )
     )
 
@@ -48,7 +48,7 @@ async def create_analysis(
         analysis_type=request.analysis_type.value,
         encrypted_access_token=user.encrypted_access_token,
         encrypted_refresh_token=user.encrypted_refresh_token,
-        query=request.query,
+        unread_only=request.unread_only,
         max_emails=request.max_emails,
         auto_apply=request.auto_apply,
         custom_categories=request.custom_categories,
@@ -58,7 +58,8 @@ async def create_analysis(
         id=analysis.id,
         analysis_type=analysis.analysis_type,
         status=analysis.status,
-        query=analysis.query,
+        unread_only=analysis.unread_only,
+        use_batch=request.max_emails > 500,
         created_at=analysis.created_at,
     )
 
@@ -75,12 +76,14 @@ async def list_analyses(
                 id=a.id,
                 analysis_type=a.analysis_type,
                 status=a.status,
-                query=a.query,
+                unread_only=a.unread_only,
                 total_emails=a.total_emails,
                 processed_emails=a.processed_emails,
+                use_batch=a.batch_id is not None,
                 error_message=a.error_message,
                 created_at=a.created_at,
                 completed_at=a.completed_at,
+                ai_insights=a.ai_insights,
             )
             for a in analyses
         ],
@@ -134,14 +137,16 @@ async def get_analysis(
         id=analysis.id,
         analysis_type=analysis.analysis_type,
         status=analysis.status,
-        query=analysis.query,
+        unread_only=analysis.unread_only,
         total_emails=analysis.total_emails,
         processed_emails=analysis.processed_emails,
+        use_batch=analysis.batch_id is not None,
         error_message=analysis.error_message,
         created_at=analysis.created_at,
         completed_at=analysis.completed_at,
         summary=summary,
         classified_emails=classified,
+        ai_insights=analysis.ai_insights,
     )
 
 

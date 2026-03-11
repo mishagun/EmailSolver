@@ -124,9 +124,8 @@ class TestClaudeClassificationService:
 
 class TestVerifyCategories:
     @pytest.mark.asyncio
-    async def test_verify_returns_merges_and_actions(self) -> None:
+    async def test_verify_returns_actions(self) -> None:
         verification_response = {
-            "merges": [{"from_category": "promo", "to_category": "promotions"}],
             "category_actions": {
                 "promotions": ["mark_read", "move_to_category"],
                 "spam": ["mark_spam"],
@@ -139,15 +138,12 @@ class TestVerifyCategories:
         result = await service.verify_categories(
             category_samples={
                 "promotions": [{"subject": "Sale!", "sender": "shop@store.com"}],
-                "promo": [{"subject": "Deal!", "sender": "deals@store.com"}],
                 "spam": [{"subject": "Win $$$", "sender": "spam@bad.com"}],
             }
         )
 
         assert isinstance(result, VerificationResult)
-        assert len(result.merges) == 1
-        assert result.merges[0].from_category == "promo"
-        assert result.merges[0].to_category == "promotions"
+        assert result.merges == []
         assert result.category_actions["promotions"] == ["mark_read", "move_to_category"]
         assert result.category_actions["spam"] == ["mark_spam"]
 

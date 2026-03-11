@@ -26,6 +26,8 @@
 - **JWT revocation via in-memory denylist** — `jti` claim on every token, checked in `decode_jwt`. `revoke_jwt` stores jti with remaining TTL. Single-process only; multi-process needs Redis.
 - **Token file permissions** — `~/.emailsolver/token` written with `0o600`, directory with `0o700`.
 - **Action history** — `email_action_history` table records every action per email with timestamp. `action_taken` on `classified_emails` is the denormalized "current" action. On undo, `pop_last_action` removes the latest history entry and restores `action_taken` to the previous one. Supports multi-level undo.
+- **Gmail `labelIds` over search queries** — `list_messages()` uses `labelIds=["UNREAD"]` parameter instead of `q="is:unread"`. Gmail's search index is eventually consistent (can miss/include wrong emails), while `labelIds` does a direct label lookup. The `query` parameter still exists for backend flexibility but UIs only expose `unread_only: bool`. Analysis model stores `unread_only` (boolean) not `query` (string).
+- **Batch API for large analyses** — when email count exceeds `BATCH_THRESHOLD` (500), classification uses Anthropic Message Batches API instead of real-time calls. 50% cheaper, processes asynchronously (typically <1 hour, max 24h). `batch_id` stored on Analysis record. Polling at 30s intervals. Frontend shows batch processing notice. Default `max_emails` is 500.
 
 ## TUI (Terminal UI)
 

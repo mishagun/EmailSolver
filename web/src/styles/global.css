@@ -376,12 +376,15 @@ tr.row-selected { background: var(--color-selected); }
 tr.row-selected:hover { background: var(--color-selected); }
 .col-checkbox { width: 32px; text-align: center; }
 
-/* Flash feedback on action */
-@keyframes action-flash {
-  0% { background: var(--color-accent); }
-  100% { background: transparent; }
+/* Row loading state — subtle pulse */
+@keyframes row-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
-tr.flash-action { animation: action-flash 0.4s ease-out; }
+tr.row-loading {
+  animation: row-pulse 1s ease-in-out infinite;
+  pointer-events: none;
+}
 
 /* Hover action menus */
 .hover-actions-cell {
@@ -414,4 +417,19 @@ tr:hover .hover-actions { display: flex; }
 .hover-actions button:hover {
   background: var(--color-text);
   color: var(--color-surface);
+}
+
+/* AI insight bar */
+.insight-bar {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--color-text-muted);
+  padding: 10px 0;
+  margin-bottom: 16px;
+  animation: insight-fade-in 0.4s ease-out;
+}
+
+@keyframes insight-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }

@@ -65,7 +65,7 @@ class TestEmailModels:
         resp = EmailListResponse(
             emails=[EmailMetadata(gmail_message_id="msg-1")],
             total=1,
-            query="is:unread",
+            unread_only=True,
         )
         assert resp.total == 1
         assert len(resp.emails) == 1
@@ -78,14 +78,14 @@ class TestEmailModels:
 class TestAnalysisModels:
     def test_analysis_create_request_defaults(self) -> None:
         req = AnalysisCreateRequest()
-        assert req.query == "is:unread"
-        assert req.max_emails == 100
+        assert req.unread_only is True
+        assert req.max_emails == 500
         assert req.auto_apply is False
         assert req.custom_categories is None
 
     def test_analysis_create_request_custom(self) -> None:
         req = AnalysisCreateRequest(
-            query="label:inbox",
+            unread_only=False,
             max_emails=50,
             auto_apply=True,
             custom_categories=["receipts", "travel"],
@@ -96,7 +96,7 @@ class TestAnalysisModels:
         resp = AnalysisResponse(
             id=1,
             status="pending",
-            query="is:unread",
+            unread_only=True,
             created_at=datetime(2026, 3, 1, tzinfo=UTC),
         )
         assert resp.status == "pending"
@@ -107,7 +107,7 @@ class TestAnalysisModels:
         resp = AnalysisResponse(
             id=1,
             status="completed",
-            query="is:unread",
+            unread_only=True,
             total_emails=50,
             processed_emails=50,
             created_at=datetime(2026, 3, 1, tzinfo=UTC),

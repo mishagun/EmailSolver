@@ -150,7 +150,7 @@ async def analysis_with_classified_emails(
     analysis = Analysis(
         user_id=test_user.id,
         status="completed",
-        query="is:unread",
+        unread_only=True,
         total_emails=2,
         processed_emails=2,
     )

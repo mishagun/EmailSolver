@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20
 CLASSIFICATION_CONCURRENCY = 2
+BATCH_THRESHOLD = 500
+BATCH_POLL_INTERVAL = 30
 
 
 class AnalysisService:
@@ -45,7 +47,7 @@ class AnalysisService:
             analysis_type: str = "ai",
             encrypted_access_token: str,
             encrypted_refresh_token: str,
-            query: str,
+            unread_only: bool,
             max_emails: int,
             auto_apply: bool,
             custom_categories: list[str] | None = None,
@@ -56,7 +58,7 @@ class AnalysisService:
                     analysis_id=analysis_id,
                     encrypted_access_token=encrypted_access_token,
                     encrypted_refresh_token=encrypted_refresh_token,
-                    query=query,
+                    unread_only=unread_only,
                     max_emails=max_emails,
                     auto_apply=auto_apply,
                 )
@@ -66,7 +68,7 @@ class AnalysisService:
                 analysis_id=analysis_id,
                 encrypted_access_token=encrypted_access_token,
                 encrypted_refresh_token=encrypted_refresh_token,
-                query=query,
+                unread_only=unread_only,
                 max_emails=max_emails,
                 auto_apply=auto_apply,
                 custom_categories=custom_categories,
@@ -84,7 +86,7 @@ class AnalysisService:
             analysis_id: int,
             encrypted_access_token: str,
             encrypted_refresh_token: str,
-            query: str,
+            unread_only: bool,
             max_emails: int,
             auto_apply: bool,
     ) -> None:
@@ -104,8 +106,9 @@ class AnalysisService:
                 access_token=access_token, refresh_token=refresh_token
             )
 
+            label_ids = ["UNREAD"] if unread_only else None
             message_ids = await self._email_service.list_messages(
-                credentials=credentials, query=query, max_results=max_emails
+                credentials=credentials, label_ids=label_ids, max_results=max_emails
             )
 
             if not message_ids:
@@ -173,6 +176,22 @@ class AnalysisService:
                     encrypted_refresh_token=encrypted_refresh_token,
                 )
 
+            if all_records:
+                try:
+                    category_samples = self._build_category_samples(
+                        classified_emails=all_records
+                    )
+                    insights = await self._classification_service.generate_insights(
+                        category_samples=category_samples,
+                    )
+                    if insights:
+                        await analysis_repo.update_insights(
+                            analysis_id=analysis_id,
+                            ai_insights=insights,
+                        )
+                except Exception:
+                    logger.warning("Failed to generate insights for inbox scan %d", analysis_id)
+
             await analysis_repo.update_status(
                 analysis_id=analysis_id,
                 status="completed",
@@ -195,7 +214,7 @@ class AnalysisService:
             analysis_id: int,
             encrypted_access_token: str,
             encrypted_refresh_token: str,
-            query: str,
+            unread_only: bool,
             max_emails: int,
             auto_apply: bool,
             custom_categories: list[str] | None = None,
@@ -216,8 +235,9 @@ class AnalysisService:
                 access_token=access_token, refresh_token=refresh_token
             )
 
+            label_ids = ["UNREAD"] if unread_only else None
             message_ids = await self._email_service.list_messages(
-                credentials=credentials, query=query, max_results=max_emails
+                credentials=credentials, label_ids=label_ids, max_results=max_emails
             )
 
             if not message_ids:
@@ -241,82 +261,33 @@ class AnalysisService:
                 processed_emails=0,
             )
 
-            # Pass 1: Classification with dynamic categories
             existing_categories = list(BASE_CATEGORIES)
             if custom_categories:
                 for cat in custom_categories:
                     if cat not in existing_categories:
                         existing_categories.append(cat)
 
-            all_classified: list[ClassifiedEmail] = []
-            processed_count = 0
-            semaphore = asyncio.Semaphore(CLASSIFICATION_CONCURRENCY)
-
-            async def _classify_batch(batch_emails: list) -> list[ClassifiedEmail]:
-                async with semaphore:
-                    results = await self._classification_service.classify_emails(
-                        emails=batch_emails, existing_categories=list(existing_categories)
-                    )
-
-                email_map = {e.gmail_message_id: e for e in batch_emails}
-                records = []
-                for result in results:
-                    email = email_map.get(result.gmail_message_id)
-                    if not email:
-                        continue
-
-                    if result.category not in existing_categories:
-                        existing_categories.append(result.category)
-
-                    records.append(
-                        ClassifiedEmail(
-                            analysis_id=analysis_id,
-                            gmail_message_id=result.gmail_message_id,
-                            gmail_thread_id=email.gmail_thread_id,
-                            sender=email.sender,
-                            sender_domain=email.sender_domain,
-                            subject=email.subject,
-                            snippet=email.snippet,
-                            received_at=email.received_at,
-                            category=result.category,
-                            importance=result.importance,
-                            sender_type=result.sender_type,
-                            confidence=result.confidence,
-                            has_unsubscribe=email.has_unsubscribe,
-                            unsubscribe_header=email.unsubscribe_header,
-                            unsubscribe_post_header=email.unsubscribe_post_header,
-                        )
-                    )
-                return records
-
             batches = [
                 emails[i: i + BATCH_SIZE]
                 for i in range(0, len(emails), BATCH_SIZE)
             ]
-            total_batches = len(batches)
-            logger.info(
-                "Analysis %d: classifying %d emails in %d batches (concurrency=%d)",
-                analysis_id, len(emails), total_batches, CLASSIFICATION_CONCURRENCY,
-            )
 
-            for chunk_start in range(0, total_batches, CLASSIFICATION_CONCURRENCY):
-                chunk = batches[chunk_start: chunk_start + CLASSIFICATION_CONCURRENCY]
-                chunk_results = await asyncio.gather(
-                    *[_classify_batch(batch_emails=b) for b in chunk]
-                )
-
-                for records in chunk_results:
-                    if records:
-                        created = await self._classified_email_repo.bulk_create(
-                            emails=records
-                        )
-                        all_classified.extend(created)
-                    processed_count += BATCH_SIZE
-
-                await analysis_repo.update_status(
+            use_batch = len(emails) > BATCH_THRESHOLD
+            if use_batch:
+                all_classified = await self._classify_with_batch_api(
                     analysis_id=analysis_id,
-                    status="processing",
-                    processed_emails=min(processed_count, len(emails)),
+                    analysis_repo=analysis_repo,
+                    emails=emails,
+                    batches=batches,
+                    existing_categories=existing_categories,
+                )
+            else:
+                all_classified = await self._classify_realtime(
+                    analysis_id=analysis_id,
+                    analysis_repo=analysis_repo,
+                    emails=emails,
+                    batches=batches,
+                    existing_categories=existing_categories,
                 )
 
             # Pass 2: Verification
@@ -324,23 +295,25 @@ class AnalysisService:
                 classified_emails=all_classified
             )
             verification = await self._classification_service.verify_categories(
-                category_samples=category_samples
+                category_samples=category_samples,
             )
-
-            for merge in verification.merges:
-                await self._classified_email_repo.bulk_update_category(
-                    analysis_id=analysis_id,
-                    from_category=merge.from_category,
-                    to_category=merge.to_category,
-                )
-                for email in all_classified:
-                    if email.category == merge.from_category:
-                        email.category = merge.to_category
 
             await analysis_repo.update_category_actions(
                 analysis_id=analysis_id,
                 category_actions=verification.category_actions,
             )
+
+            try:
+                insights = await self._classification_service.generate_insights(
+                    category_samples=category_samples,
+                )
+                if insights:
+                    await analysis_repo.update_insights(
+                        analysis_id=analysis_id,
+                        ai_insights=insights,
+                    )
+            except Exception:
+                logger.warning("Failed to generate insights for analysis %d", analysis_id)
 
             if auto_apply and all_classified:
                 await self._auto_apply_actions(
@@ -365,6 +338,172 @@ class AnalysisService:
                 error_message=str(exc),
                 completed_at=datetime.now(UTC),
             )
+
+    async def _classify_realtime(
+            self,
+            *,
+            analysis_id: int,
+            analysis_repo: BaseAnalysisRepository,
+            emails: list,
+            batches: list[list],
+            existing_categories: list[str],
+    ) -> list[ClassifiedEmail]:
+        all_classified: list[ClassifiedEmail] = []
+        processed_count = 0
+        semaphore = asyncio.Semaphore(CLASSIFICATION_CONCURRENCY)
+
+        async def _classify_batch(batch_emails: list) -> list[ClassifiedEmail]:
+            async with semaphore:
+                results = await self._classification_service.classify_emails(
+                    emails=batch_emails, existing_categories=list(existing_categories)
+                )
+
+            email_map = {e.gmail_message_id: e for e in batch_emails}
+            records = []
+            for result in results:
+                email = email_map.get(result.gmail_message_id)
+                if not email:
+                    continue
+
+                if result.category not in existing_categories:
+                    existing_categories.append(result.category)
+
+                records.append(
+                    ClassifiedEmail(
+                        analysis_id=analysis_id,
+                        gmail_message_id=result.gmail_message_id,
+                        gmail_thread_id=email.gmail_thread_id,
+                        sender=email.sender,
+                        sender_domain=email.sender_domain,
+                        subject=email.subject,
+                        snippet=email.snippet,
+                        received_at=email.received_at,
+                        category=result.category,
+                        importance=result.importance,
+                        sender_type=result.sender_type,
+                        confidence=result.confidence,
+                        has_unsubscribe=email.has_unsubscribe,
+                        unsubscribe_header=email.unsubscribe_header,
+                        unsubscribe_post_header=email.unsubscribe_post_header,
+                    )
+                )
+            return records
+
+        total_batches = len(batches)
+        logger.info(
+            "Analysis %d: classifying %d emails in %d batches (concurrency=%d)",
+            analysis_id, len(emails), total_batches, CLASSIFICATION_CONCURRENCY,
+        )
+
+        for chunk_start in range(0, total_batches, CLASSIFICATION_CONCURRENCY):
+            chunk = batches[chunk_start: chunk_start + CLASSIFICATION_CONCURRENCY]
+            chunk_results = await asyncio.gather(
+                *[_classify_batch(batch_emails=b) for b in chunk]
+            )
+
+            for records in chunk_results:
+                if records:
+                    created = await self._classified_email_repo.bulk_create(
+                        emails=records
+                    )
+                    all_classified.extend(created)
+                processed_count += BATCH_SIZE
+
+            await analysis_repo.update_status(
+                analysis_id=analysis_id,
+                status="processing",
+                processed_emails=min(processed_count, len(emails)),
+            )
+
+        return all_classified
+
+    async def _classify_with_batch_api(
+            self,
+            *,
+            analysis_id: int,
+            analysis_repo: BaseAnalysisRepository,
+            emails: list,
+            batches: list[list],
+            existing_categories: list[str],
+    ) -> list[ClassifiedEmail]:
+        logger.info(
+            "Analysis %d: using batch API for %d emails in %d batches",
+            analysis_id, len(emails), len(batches),
+        )
+
+        batch_id = await self._classification_service.submit_batch_classification(
+            email_batches=batches,
+            existing_categories=existing_categories,
+        )
+
+        await analysis_repo.update_status(
+            analysis_id=analysis_id,
+            status="processing",
+            batch_id=batch_id,
+        )
+
+        while True:
+            status = await self._classification_service.check_batch_status(
+                batch_id=batch_id
+            )
+            if status == "ended":
+                break
+            logger.info(
+                "Analysis %d: batch %s still processing, waiting %ds",
+                analysis_id, batch_id, BATCH_POLL_INTERVAL,
+            )
+            await asyncio.sleep(BATCH_POLL_INTERVAL)
+
+        batch_results = await self._classification_service.retrieve_batch_results(
+            batch_id=batch_id
+        )
+
+        all_classified: list[ClassifiedEmail] = []
+        for batch_idx, batch_emails in enumerate(batches):
+            custom_id = f"batch-{batch_idx}"
+            results = batch_results.get(custom_id, [])
+            email_map = {e.gmail_message_id: e for e in batch_emails}
+
+            records = []
+            for result in results:
+                email = email_map.get(result.gmail_message_id)
+                if not email:
+                    continue
+
+                if result.category not in existing_categories:
+                    existing_categories.append(result.category)
+
+                records.append(
+                    ClassifiedEmail(
+                        analysis_id=analysis_id,
+                        gmail_message_id=result.gmail_message_id,
+                        gmail_thread_id=email.gmail_thread_id,
+                        sender=email.sender,
+                        sender_domain=email.sender_domain,
+                        subject=email.subject,
+                        snippet=email.snippet,
+                        received_at=email.received_at,
+                        category=result.category,
+                        importance=result.importance,
+                        sender_type=result.sender_type,
+                        confidence=result.confidence,
+                        has_unsubscribe=email.has_unsubscribe,
+                        unsubscribe_header=email.unsubscribe_header,
+                        unsubscribe_post_header=email.unsubscribe_post_header,
+                    )
+                )
+
+            if records:
+                created = await self._classified_email_repo.bulk_create(emails=records)
+                all_classified.extend(created)
+
+        await analysis_repo.update_status(
+            analysis_id=analysis_id,
+            status="processing",
+            processed_emails=len(emails),
+        )
+
+        return all_classified
 
     @staticmethod
     def _build_category_samples(
@@ -594,11 +733,11 @@ class AnalysisService:
 
         for cat, emails_in_cat in by_category.items():
             actions = category_actions.get(cat, [])
-            if not actions:
-                continue
-            action = actions[0]
-            if action == "keep":
-                continue
+            action = next((a for a in actions if a != "keep"), None)
+            if action is None:
+                if cat in ("primary", "important"):
+                    continue
+                action = "mark_read"
             await self._apply_actions(
                 classified_emails=emails_in_cat,
                 action=action,

@@ -58,6 +58,7 @@ class SQLAlchemyAnalysisRepository(BaseAnalysisRepository):
         status: str,
         processed_emails: int | None = None,
         total_emails: int | None = None,
+        batch_id: str | None = None,
         error_message: str | None = None,
         completed_at: datetime | None = None,
     ) -> None:
@@ -66,6 +67,8 @@ class SQLAlchemyAnalysisRepository(BaseAnalysisRepository):
             values["processed_emails"] = processed_emails
         if total_emails is not None:
             values["total_emails"] = total_emails
+        if batch_id is not None:
+            values["batch_id"] = batch_id
         if error_message is not None:
             values["error_message"] = error_message
         if completed_at is not None:
@@ -109,5 +112,24 @@ class SQLAlchemyAnalysisRepository(BaseAnalysisRepository):
                 update(Analysis)
                 .where(Analysis.id == analysis_id)
                 .values(category_actions=category_actions)
+            )
+            await self._session.commit()
+
+    async def update_insights(
+        self, *, analysis_id: int, ai_insights: list[str]
+    ) -> None:
+        if self._session_maker:
+            async with self._session_maker() as session:
+                await session.execute(
+                    update(Analysis)
+                    .where(Analysis.id == analysis_id)
+                    .values(ai_insights=ai_insights)
+                )
+                await session.commit()
+        else:
+            await self._session.execute(
+                update(Analysis)
+                .where(Analysis.id == analysis_id)
+                .values(ai_insights=ai_insights)
             )
             await self._session.commit()

@@ -219,7 +219,7 @@ class TestListMessages:
         with patch("app.services.gmail_service.build", return_value=mock_service):
             mock_creds = MagicMock()
             result = await gmail_service.list_messages(
-                credentials=mock_creds, query="is:unread"
+                credentials=mock_creds, label_ids=["UNREAD"]
             )
 
         assert result == ["msg-1", "msg-2"]

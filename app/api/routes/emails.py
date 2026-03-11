@@ -11,7 +11,7 @@ router = APIRouter()
 @router.get("", response_model=EmailListResponse)
 async def list_emails(
     user: User = Depends(get_current_user),
-    query: str = Query(default="is:unread"),
+    unread_only: bool = Query(default=True),
     max_results: int = Query(default=50, le=500),
     email_service: protocols.BaseEmailService = Depends(get_email_service),
     security_service: protocols.BaseSecurityService = Depends(get_security_service),
@@ -24,13 +24,14 @@ async def list_emails(
             encrypted_token=user.encrypted_refresh_token
         ),
     )
+    label_ids = ["UNREAD"] if unread_only else None
     message_ids = await email_service.list_messages(
-        credentials=credentials, query=query, max_results=max_results
+        credentials=credentials, label_ids=label_ids, max_results=max_results
     )
     emails = await email_service.get_messages_batch(
         credentials=credentials, message_ids=message_ids
     )
-    return EmailListResponse(emails=emails, total=len(emails), query=query)
+    return EmailListResponse(emails=emails, total=len(emails), unread_only=unread_only)
 
 
 @router.get("/stats", response_model=EmailStatsResponse)
@@ -48,10 +49,10 @@ async def email_stats(
         ),
     )
     unread_ids = await email_service.list_messages(
-        credentials=credentials, query="is:unread", max_results=1
+        credentials=credentials, label_ids=["UNREAD"], max_results=1
     )
     total_ids = await email_service.list_messages(
-        credentials=credentials, query="", max_results=1
+        credentials=credentials, max_results=1
     )
     return EmailStatsResponse(
         unread_count=len(unread_ids),

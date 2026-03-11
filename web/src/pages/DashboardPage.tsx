@@ -9,8 +9,8 @@ export function DashboardPage() {
   const [analyses, setAnalyses] = useState<AnalysisResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [query, setQuery] = useState('is:unread');
-  const [maxEmails, setMaxEmails] = useState(100);
+  const [unreadOnly, setUnreadOnly] = useState(true);
+  const [maxEmails, setMaxEmails] = useState(500);
   const [autoApply, setAutoApply] = useState(false);
   const [customCategories, setCustomCategories] = useState('');
   const [creating, setCreating] = useState(false);
@@ -42,7 +42,7 @@ export function DashboardPage() {
         : undefined;
       const analysis = await apiClient.createAnalysis({
         analysis_type: analysisType,
-        query,
+        unread_only: unreadOnly,
         max_emails: maxEmails,
         auto_apply: autoApply,
         custom_categories: cats,
@@ -140,15 +140,7 @@ export function DashboardPage() {
 
       <div className="animate-in stagger-3 section" style={{ marginBottom: 24 }}>
         <div className="section-title">options</div>
-        <div className="flex gap-16" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div>
-            <div className="field-label">query</div>
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              style={{ width: 200 }}
-            />
-          </div>
+        <div className="flex gap-16" style={{ alignItems: 'flex-end' }}>
           <div>
             <div className="field-label">max emails</div>
             <input
@@ -157,6 +149,27 @@ export function DashboardPage() {
               onChange={e => setMaxEmails(Number(e.target.value))}
               style={{ width: 100 }}
             />
+          </div>
+          {maxEmails > 500 && (
+            <div style={{ fontSize: 13, lineHeight: 1.4, fontWeight: 600, paddingBottom: 6 }}>
+              batch mode — {maxEmails.toLocaleString()} emails will be processed in the background.
+              <span className="muted" style={{ fontWeight: 400 }}> 50% cheaper, takes up to 1 hour.</span>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-24" style={{ marginTop: 16 }}>
+          <div>
+            <label>
+              <input
+                type="checkbox"
+                checked={unreadOnly}
+                onChange={e => setUnreadOnly(e.target.checked)}
+              />
+              unread only
+            </label>
+            <div className="muted" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.4 }}>
+              when checked, only unread emails are analyzed.
+            </div>
           </div>
           <div>
             <label>
@@ -169,7 +182,6 @@ export function DashboardPage() {
             </label>
             <div className="muted" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.4 }}>
               automatically apply recommended actions when analysis completes.
-              when off, you review results first and apply actions manually.
             </div>
           </div>
         </div>
@@ -186,7 +198,7 @@ export function DashboardPage() {
                 <th>id</th>
                 <th>type</th>
                 <th>status</th>
-                <th>query</th>
+                <th>filter</th>
                 <th>progress</th>
                 <th>created</th>
                 <th></th>
@@ -198,7 +210,7 @@ export function DashboardPage() {
                   <td>#{a.id}</td>
                   <td>{typeBadge(a.analysis_type)}</td>
                   <td>{statusBadge(a.status)}</td>
-                  <td>{a.query || '—'}</td>
+                  <td>{a.unread_only ? 'unread' : 'all'}</td>
                   <td>{progressText(a)}</td>
                   <td>{new Date(a.created_at).toLocaleDateString()}</td>
                   <td>

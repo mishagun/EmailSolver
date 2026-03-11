@@ -17,12 +17,12 @@ class TestCreateAnalysis:
         )
         response = await authenticated_client.post(
             "/api/v1/analysis",
-            json={"query": "is:unread", "max_emails": 50},
+            json={"unread_only": True, "max_emails": 50},
         )
         assert response.status_code == 202
         data = response.json()
         assert data["status"] == "pending"
-        assert data["query"] == "is:unread"
+        assert data["unread_only"] is True
         assert "id" in data
         mock_analysis_service.start_analysis.assert_called_once()
 
@@ -38,9 +38,9 @@ class TestCreateAnalysis:
             json={"max_emails": 50},
         )
         assert response.status_code == 202
-        assert response.json()["query"] == "is:unread"
+        assert response.json()["unread_only"] is True
         call_kwargs = mock_analysis_service.start_analysis.call_args.kwargs
-        assert call_kwargs["query"] == "is:unread"
+        assert call_kwargs["unread_only"] is True
 
     @pytest.mark.asyncio
     async def test_creates_analysis_with_custom_categories(
@@ -52,7 +52,7 @@ class TestCreateAnalysis:
         response = await authenticated_client.post(
             "/api/v1/analysis",
             json={
-                "query": "is:unread",
+                "unread_only": True,
                 "max_emails": 50,
                 "custom_categories": ["receipts", "travel"],
             },
@@ -74,7 +74,7 @@ class TestCreateAnalysis:
         response = await authenticated_client.post(
             "/api/v1/analysis",
             json={
-                "query": "is:unread",
+                "unread_only": True,
                 "max_emails": 50,
                 "analysis_type": "inbox_scan",
             },
@@ -99,7 +99,7 @@ class TestCreateAnalysis:
         # Act
         response = await authenticated_client.post(
             "/api/v1/analysis",
-            json={"query": "is:unread", "max_emails": 50},
+            json={"unread_only": True, "max_emails": 50},
         )
 
         # Assert
@@ -113,7 +113,7 @@ class TestCreateAnalysis:
     async def test_rejects_unauthenticated(self, test_client) -> None:
         response = await test_client.post(
             "/api/v1/analysis",
-            json={"query": "is:unread"},
+            json={"unread_only": True},
         )
         assert response.status_code in (401, 403)
 
@@ -243,7 +243,7 @@ class TestGetAnalysis:
         await db_session.refresh(other_user)
 
         analysis = Analysis(
-            user_id=other_user.id, status="completed", query="test"
+            user_id=other_user.id, status="completed", unread_only=True
         )
         db_session.add(analysis)
         await db_session.commit()
@@ -269,7 +269,7 @@ class TestApplyActions:
         self, authenticated_client, db_session, test_user
     ) -> None:
         analysis = Analysis(
-            user_id=test_user.id, status="processing", query="test"
+            user_id=test_user.id, status="processing", unread_only=True
         )
         db_session.add(analysis)
         await db_session.commit()

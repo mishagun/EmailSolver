@@ -10,7 +10,7 @@ from tests.integration.fakes import FakeEmailService
 async def _create_completed_analysis(client: AsyncClient) -> int:
     response = await client.post(
         "/api/v1/analysis",
-        json={"query": "is:unread", "max_emails": 100},
+        json={"unread_only": True, "max_emails": 100},
     )
     analysis_id = response.json()["id"]
     await wait_for_analysis(client=client, analysis_id=analysis_id)
@@ -136,7 +136,7 @@ async def test_apply_actions_on_incomplete_analysis_fails(
 
     response = await client.post(
         "/api/v1/analysis",
-        json={"query": "is:unread", "max_emails": 100},
+        json={"unread_only": True, "max_emails": 100},
     )
     analysis_id = response.json()["id"]
 

@@ -30,9 +30,10 @@ export function AnalysisPage() {
   const [groupBySender, setGroupBySender] = useState(false);
   const [detailEmail, setDetailEmail] = useState<ClassifiedEmail | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [loadingIds, setLoadingIds] = useState<Set<number | string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
-  const [flashIds, setFlashIds] = useState<Set<number | string>>(new Set());
+  const [insightIndex, setInsightIndex] = useState(0);
 
   // Selection state
   const [selectedEmails, setSelectedEmails] = useState<Set<number>>(new Set());
@@ -94,6 +95,7 @@ export function AnalysisPage() {
 
   const handleTabClick = (tab: Tab) => {
     setActiveTab(tab);
+    setInsightIndex(prev => prev + 1);
     if (tab === 'categories') {
       setFilterCategory(null);
       setFilterSender(null);
@@ -106,14 +108,17 @@ export function AnalysisPage() {
     setFilterSender(null);
     setGroupBySender(false);
     setActiveTab('emails');
+    setInsightIndex(prev => prev + 1);
   };
 
   const handleSenderClick = (domain: string) => {
     setFilterSender(domain);
     setGroupBySender(false);
+    setInsightIndex(prev => prev + 1);
   };
 
   const handleToggleGroupBySender = () => {
+    setInsightIndex(prev => prev + 1);
     if (groupBySender) {
       setGroupBySender(false);
     } else {
@@ -135,11 +140,6 @@ export function AnalysisPage() {
     return result.map(e => e.id);
   }, [emails, filterCategory, filterSender]);
 
-  const triggerFlash = (ids: (number | string)[]) => {
-    setFlashIds(new Set(ids));
-    setTimeout(() => setFlashIds(new Set()), 400);
-  };
-
   const handleAction = useCallback(async (
     action: ActionType,
     emailIds?: number[],
@@ -152,18 +152,37 @@ export function AnalysisPage() {
         setUndoStack(prev => {
           const entry = prev[prev.length - 1];
           if (entry) {
-            triggerFlash(entry.emailIds);
+            setLoadingIds(new Set(entry.emailIds));
+
             apiClient.applyActions(analysisId, {
               action: 'undo',
               email_ids: entry.emailIds,
-            }).then(() => fetchAnalysis());
+            }).then(() => { fetchAnalysis(); setLoadingIds(new Set()); });
           }
           return prev.slice(0, -1);
         });
         return;
       }
 
-      // Resolve which email IDs are affected for undo stack and flash
+      // Resolve which rows are affected — use category/sender strings or email IDs
+      const affectedRowIds: (number | string)[] = [];
+      if (overrides?.category) {
+        affectedRowIds.push(overrides.category);
+      } else if (overrides?.sender_domain) {
+        affectedRowIds.push(overrides.sender_domain);
+      } else if (emailIds) {
+        affectedRowIds.push(...emailIds);
+      } else if (activeTab === 'categories' && selectedCategories.size > 0) {
+        affectedRowIds.push(...selectedCategories);
+      } else if (activeTab === 'emails' && groupBySender && selectedSenders.size > 0) {
+        affectedRowIds.push(...selectedSenders);
+      } else if (activeTab === 'emails' && selectedEmails.size > 0) {
+        affectedRowIds.push(...selectedEmails);
+      } else if (filterCategory) {
+        affectedRowIds.push(filterCategory);
+      }
+      setLoadingIds(new Set(affectedRowIds));
+
       const resolvedIds = resolveEmailIds(emailIds, overrides);
 
       await apiClient.applyActions(analysisId, {
@@ -175,7 +194,6 @@ export function AnalysisPage() {
 
       if (resolvedIds.length > 0) {
         setUndoStack(prev => [...prev, { action, emailIds: resolvedIds }]);
-        triggerFlash(resolvedIds);
       }
 
       // Clear selection after action
@@ -192,6 +210,7 @@ export function AnalysisPage() {
       setActionError(message);
     } finally {
       setActionLoading(false);
+      setLoadingIds(new Set());
     }
   }, [analysisId, resolveEmailIds, filterCategory, filterSender, groupBySender, fetchAnalysis, fetchSenders]);
 
@@ -292,7 +311,7 @@ export function AnalysisPage() {
           <span className={`badge ${analysis.status === 'completed' ? 'completed' : analysis.status === 'error' ? 'error' : 'processing'}`}>
             {analysis.status}
           </span>
-          {analysis.query && <span className="muted">{analysis.query}</span>}
+          <span className="muted">{analysis.unread_only ? 'unread' : 'all'}</span>
         </div>
         <button onClick={() => navigate('/dashboard')}>← dashboard</button>
       </div>
@@ -303,12 +322,24 @@ export function AnalysisPage() {
             processed={analysis.processed_emails ?? 0}
             total={analysis.total_emails ?? 0}
           />
+          {analysis.use_batch && (
+            <div className="muted" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.5, padding: '8px 12px', border: '1px solid rgba(0,0,0,0.15)', background: 'rgba(0,0,0,0.03)' }}>
+              using background batch processing for {(analysis.total_emails ?? 0).toLocaleString()} emails.
+              this is 50% cheaper but takes longer (typically under 1 hour). results will appear when the batch completes.
+            </div>
+          )}
         </div>
       )}
 
       {analysis.status === 'error' && (
         <div className="section error-text animate-in stagger-2">
           {analysis.error_message || 'analysis failed'}
+        </div>
+      )}
+
+      {analysis.ai_insights && analysis.ai_insights.length > 0 && (
+        <div className="insight-bar" key={insightIndex}>
+          {analysis.ai_insights[insightIndex % analysis.ai_insights.length]}
         </div>
       )}
 
@@ -325,100 +356,110 @@ export function AnalysisPage() {
           ))}
         </div>
 
-        {activeTab === 'categories' && (
-          <SummaryTab
-            summary={analysis.summary ?? []}
-            emails={emails}
-            isInboxScan={isInboxScan}
-            selected={selectedCategories}
-            onToggleSelect={(cat) => setSelectedCategories(prev => {
-              const next = new Set(prev);
-              next.has(cat) ? next.delete(cat) : next.add(cat);
-              return next;
-            })}
-            onToggleAll={(all) => setSelectedCategories(all ? new Set((analysis.summary ?? []).map(s => s.category)) : new Set())}
-            flashIds={flashIds}
-            onCategoryClick={handleCategoryClick}
-            onRowAction={(action, category) => handleAction(action, undefined, { category })}
-          />
-        )}
+        <div>
+          {activeTab === 'categories' && (
+            <SummaryTab
+              summary={analysis.summary ?? []}
+              emails={emails}
+              isInboxScan={isInboxScan}
+              selected={selectedCategories}
+              onToggleSelect={(cat) => setSelectedCategories(prev => {
+                const next = new Set(prev);
+                next.has(cat) ? next.delete(cat) : next.add(cat);
+                return next;
+              })}
+              onToggleAll={(all) => setSelectedCategories(all ? new Set((analysis.summary ?? []).map(s => s.category)) : new Set())}
 
-        {activeTab === 'insights' && (
-          <InsightsTab emails={emails} isInboxScan={isInboxScan} onCategoryClick={handleCategoryClick} />
-        )}
+              loadingIds={loadingIds}
+              onCategoryClick={handleCategoryClick}
+              onRowAction={(action, category) => handleAction(action, undefined, { category })}
+            />
+          )}
 
-        {activeTab === 'emails' && (
-          <>
-            <div className="flex-between mb-16">
-              <div className="flex gap-8" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
-                {(filterCategory || filterSender || groupBySender) && (
-                  <button
-                    style={{ fontSize: 12, padding: '4px 12px' }}
-                    onClick={() => {
-                      if (filterSender) {
-                        setFilterSender(null);
-                      } else if (groupBySender) {
-                        setGroupBySender(false);
-                      } else if (filterCategory) {
-                        setFilterCategory(null);
-                        setActiveTab('categories');
-                      }
-                    }}
-                  >
-                    ← back
-                  </button>
-                )}
-                {filterCategory && (
-                  <span className="badge" style={{ cursor: 'pointer' }} onClick={() => setFilterCategory(null)}>
-                    {filterCategory} ×
-                  </span>
-                )}
-                {filterSender && (
-                  <span className="badge" style={{ cursor: 'pointer' }} onClick={() => setFilterSender(null)}>
-                    {filterSender} ×
-                  </span>
-                )}
+          {activeTab === 'insights' && (
+            <InsightsTab emails={emails} isInboxScan={isInboxScan} onCategoryClick={handleCategoryClick} />
+          )}
+
+          {activeTab === 'emails' && (
+            <>
+              <div className="flex-between mb-16">
+                <div className="flex gap-8" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+                  {(filterCategory || filterSender || groupBySender) && (
+                    <button
+                      style={{ fontSize: 12, padding: '4px 12px' }}
+                      onClick={() => {
+                        if (filterSender) {
+                          setFilterSender(null);
+                        } else if (groupBySender) {
+                          setGroupBySender(false);
+                        } else if (filterCategory) {
+                          setFilterCategory(null);
+                          setActiveTab('categories');
+                        }
+                      }}
+                    >
+                      ← back
+                    </button>
+                  )}
+                  {filterCategory && (
+                    <span className="badge" style={{ cursor: 'pointer' }} onClick={() => setFilterCategory(null)}>
+                      {filterCategory} ×
+                    </span>
+                  )}
+                  {filterSender && (
+                    <span className="badge" style={{ cursor: 'pointer' }} onClick={() => setFilterSender(null)}>
+                      {filterSender} ×
+                    </span>
+                  )}
+                </div>
+                <button
+                  className={groupBySender ? 'primary' : ''}
+                  onClick={handleToggleGroupBySender}
+                  style={{ fontSize: 12, padding: '4px 12px' }}
+                >
+                  {groupBySender ? 'show all' : 'group by sender'}
+                </button>
               </div>
-              <button
-                className={groupBySender ? 'primary' : ''}
-                onClick={handleToggleGroupBySender}
-                style={{ fontSize: 12, padding: '4px 12px' }}
-              >
-                {groupBySender ? 'show all' : 'group by sender'}
-              </button>
-            </div>
 
-            {groupBySender ? (
-              <SendersView
-                senders={senders}
-                emails={filteredEmails}
-                selected={selectedSenders}
-                onToggleSelect={(domain) => setSelectedSenders(prev => {
-                  const next = new Set(prev);
-                  next.has(domain) ? next.delete(domain) : next.add(domain);
-                  return next;
-                })}
-                onToggleAll={(all) => setSelectedSenders(all ? new Set(senders.map(s => s.sender_domain)) : new Set())}
-                flashIds={flashIds}
-                onSenderClick={handleSenderClick}
-                onRowAction={(action, senderDomain) => handleAction(action, undefined, { sender_domain: senderDomain })}
-              />
-            ) : (
-              <EmailsTable
-                emails={filteredEmails}
-                showPriority={!isInboxScan}
-                selected={selectedEmails}
-                onToggleSelect={(emailId) => setSelectedEmails(prev => {
-                  const next = new Set(prev);
-                  next.has(emailId) ? next.delete(emailId) : next.add(emailId);
-                  return next;
-                })}
-                onToggleAll={(all) => setSelectedEmails(all ? new Set(filteredEmails.map(e => e.id)) : new Set())}
-                flashIds={flashIds}
-                onEmailClick={setDetailEmail}
-                onRowAction={(action, emailId) => handleAction(action, [emailId])}
-              />
-            )}
+              {groupBySender ? (
+                <SendersView
+                  senders={senders}
+                  emails={filteredEmails}
+                  selected={selectedSenders}
+                  onToggleSelect={(domain) => setSelectedSenders(prev => {
+                    const next = new Set(prev);
+                    next.has(domain) ? next.delete(domain) : next.add(domain);
+                    return next;
+                  })}
+                  onToggleAll={(all) => setSelectedSenders(all ? new Set(senders.map(s => s.sender_domain)) : new Set())}
+    
+                  loadingIds={loadingIds}
+                  onSenderClick={handleSenderClick}
+                  onRowAction={(action, senderDomain) => handleAction(action, undefined, { sender_domain: senderDomain })}
+                />
+              ) : (
+                <EmailsTable
+                  emails={filteredEmails}
+                  showPriority={!isInboxScan}
+                  selected={selectedEmails}
+                  onToggleSelect={(emailId) => setSelectedEmails(prev => {
+                    const next = new Set(prev);
+                    next.has(emailId) ? next.delete(emailId) : next.add(emailId);
+                    return next;
+                  })}
+                  onToggleAll={(all) => setSelectedEmails(all ? new Set(filteredEmails.map(e => e.id)) : new Set())}
+    
+                  loadingIds={loadingIds}
+                  onEmailClick={setDetailEmail}
+                  onRowAction={(action, emailId) => handleAction(action, [emailId])}
+                />
+              )}
+            </>
+          )}
+        </div>
+
+        {(activeTab === 'categories' || activeTab === 'emails') && (
+          <>
             {actionError && <div className="error-text mb-8">{actionError}</div>}
             <ActionBar scope={actionScope} onAction={handleSelectionAction} disabled={actionLoading} canUndo={undoStack.length > 0} />
           </>
@@ -443,7 +484,8 @@ function SummaryTab({
   selected,
   onToggleSelect,
   onToggleAll,
-  flashIds,
+
+  loadingIds,
   onCategoryClick,
   onRowAction,
 }: {
@@ -453,7 +495,8 @@ function SummaryTab({
   selected: Set<string>;
   onToggleSelect: (category: string) => void;
   onToggleAll: (all: boolean) => void;
-  flashIds: Set<number | string>;
+
+  loadingIds: Set<number | string>;
   onCategoryClick: (category: string) => void;
   onRowAction: (action: ActionType, category: string) => void;
 }) {
@@ -475,17 +518,6 @@ function SummaryTab({
 
   const allSelected = summary.length > 0 && summary.every(s => selected.has(s.category));
 
-  // Check which categories have flashing emails
-  const flashingCategories = useMemo(() => {
-    const cats = new Set<string>();
-    for (const email of emails) {
-      if (flashIds.has(email.id)) {
-        cats.add(email.category || 'primary');
-      }
-    }
-    return cats;
-  }, [emails, flashIds]);
-
   return (
     <table>
       <thead>
@@ -502,11 +534,11 @@ function SummaryTab({
       <tbody>
         {summary.map(s => {
           const actions = actionCountsByCategory[s.category];
-          const isFlashing = flashingCategories.has(s.category);
+          const isLoading = loadingIds.has(s.category);
           const rowClass = [
             'clickable',
             selected.has(s.category) ? 'row-selected' : '',
-            isFlashing ? 'flash-action' : '',
+            isLoading ? 'row-loading' : '',
           ].filter(Boolean).join(' ');
           return (
             <tr key={s.category} className={rowClass}>
@@ -546,7 +578,8 @@ function EmailsTable({
   selected,
   onToggleSelect,
   onToggleAll,
-  flashIds,
+
+  loadingIds,
   onEmailClick,
   onRowAction,
 }: {
@@ -555,7 +588,8 @@ function EmailsTable({
   selected: Set<number>;
   onToggleSelect: (emailId: number) => void;
   onToggleAll: (all: boolean) => void;
-  flashIds: Set<number | string>;
+
+  loadingIds: Set<number | string>;
   onEmailClick: (email: ClassifiedEmail) => void;
   onRowAction: (action: ActionType, emailId: number) => void;
 }) {
@@ -582,11 +616,12 @@ function EmailsTable({
       <tbody>
         {emails.map(email => {
           const ad = actionDisplay(email.action_taken);
+          const isLoading = loadingIds.has(email.id);
           const rowClasses = [
             'clickable',
             ad.cssClass ? `row-acted row-action-${ad.cssClass}` : '',
             selected.has(email.id) ? 'row-selected' : '',
-            flashIds.has(email.id) ? 'flash-action' : '',
+            isLoading ? 'row-loading' : '',
           ].filter(Boolean).join(' ');
           return (
             <tr key={email.id} className={rowClasses}>
@@ -621,7 +656,8 @@ function SendersView({
   selected,
   onToggleSelect,
   onToggleAll,
-  flashIds,
+
+  loadingIds,
   onSenderClick,
   onRowAction,
 }: {
@@ -630,7 +666,8 @@ function SendersView({
   selected: Set<string>;
   onToggleSelect: (domain: string) => void;
   onToggleAll: (all: boolean) => void;
-  flashIds: Set<number | string>;
+
+  loadingIds: Set<number | string>;
   onSenderClick: (domain: string) => void;
   onRowAction: (action: ActionType, senderDomain: string) => void;
 }) {
@@ -652,17 +689,6 @@ function SendersView({
 
   const allSelected = senders.length > 0 && senders.every(s => selected.has(s.sender_domain));
 
-  // Check which senders have flashing emails
-  const flashingSenders = useMemo(() => {
-    const domains = new Set<string>();
-    for (const email of emails) {
-      if (flashIds.has(email.id)) {
-        domains.add(email.sender_domain || '');
-      }
-    }
-    return domains;
-  }, [emails, flashIds]);
-
   return (
     <table>
       <thead>
@@ -680,11 +706,11 @@ function SendersView({
       <tbody>
         {senders.map(s => {
           const actions = actionCountsBySender[s.sender_domain];
-          const isFlashing = flashingSenders.has(s.sender_domain);
+          const isLoading = loadingIds.has(s.sender_domain);
           const rowClass = [
             'clickable',
             selected.has(s.sender_domain) ? 'row-selected' : '',
-            isFlashing ? 'flash-action' : '',
+            isLoading ? 'row-loading' : '',
           ].filter(Boolean).join(' ');
           return (
             <tr key={s.sender_domain} className={rowClass}>

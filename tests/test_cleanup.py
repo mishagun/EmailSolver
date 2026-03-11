@@ -12,7 +12,7 @@ from tests.conftest import test_session_maker
 
 @pytest.fixture
 async def analysis_with_emails(db_session: AsyncSession, test_user: User) -> Analysis:
-    analysis = Analysis(user_id=test_user.id, status="completed", query="is:unread")
+    analysis = Analysis(user_id=test_user.id, status="completed", unread_only=True)
     db_session.add(analysis)
     await db_session.commit()
     await db_session.refresh(analysis)

@@ -75,12 +75,12 @@ class EmailSolverClient:
         return MessageResponse.model_validate(resp.json())
 
     async def list_emails(
-        self, *, query: str = "is:unread", max_results: int = 500
+        self, *, unread_only: bool = True, max_results: int = 500
     ) -> EmailListResponse:
         resp = await self._request(
             method="GET",
             path="/api/v1/emails",
-            params={"query": query, "max_results": max_results},
+            params={"unread_only": unread_only, "max_results": max_results},
         )
         return EmailListResponse.model_validate(resp.json())
 

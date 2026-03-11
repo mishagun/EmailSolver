@@ -90,7 +90,7 @@ class TestClientApiCalls:
             json={
                 "emails": [{"gmail_message_id": "msg-1", "subject": "Hello"}],
                 "total": 1,
-                "query": "is:unread",
+                "unread_only": True,
             },
         )
         async with mock_request(self.client, response=resp):
@@ -104,12 +104,12 @@ class TestClientApiCalls:
             json={
                 "id": 1,
                 "status": "pending",
-                "query": "is:unread",
+                "unread_only": True,
                 "created_at": "2026-03-01T00:00:00Z",
             },
         )
         async with mock_request(self.client, response=resp):
-            req = AnalysisCreateRequest(query="is:unread", max_emails=50)
+            req = AnalysisCreateRequest(unread_only=True, max_emails=50)
             result = await self.client.create_analysis(request=req)
             assert result.id == 1
             assert result.status == "pending"

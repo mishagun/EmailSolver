@@ -42,7 +42,7 @@ export const mockAnalysis: AnalysisResponse = {
   id: 1,
   analysis_type: 'ai',
   status: 'completed',
-  query: 'is:unread',
+  unread_only: true,
   total_emails: 2,
   processed_emails: 2,
   error_message: null,
@@ -53,13 +53,14 @@ export const mockAnalysis: AnalysisResponse = {
     { category: 'newsletters', count: 1, recommended_actions: ['unsubscribe', 'mark_read'] },
   ],
   classified_emails: [mockEmail, mockEmail2],
+  ai_insights: ["only 1 out of 2 emails here was from a human", "newsletters outnumber real mail"],
 };
 
 export const mockProcessingAnalysis: AnalysisResponse = {
   id: 2,
   analysis_type: 'ai',
   status: 'processing',
-  query: 'is:unread',
+  unread_only: true,
   total_emails: 50,
   processed_emails: 25,
   error_message: null,
@@ -67,6 +68,7 @@ export const mockProcessingAnalysis: AnalysisResponse = {
   completed_at: null,
   summary: null,
   classified_emails: null,
+  ai_insights: null,
 };
 
 export const mockSenders: SenderGroupSummary[] = [

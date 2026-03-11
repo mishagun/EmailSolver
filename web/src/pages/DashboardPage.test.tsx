@@ -75,7 +75,7 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.getByText('#1')).toBeInTheDocument();
     });
-    expect(screen.getByText('is:unread')).toBeInTheDocument();
+    expect(screen.getByText('unread')).toBeInTheDocument();
   });
 
   it('shows empty state when no analyses', async () => {
@@ -129,7 +129,7 @@ describe('DashboardPage', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        id: 5, analysis_type: 'ai', status: 'pending', query: 'is:unread',
+        id: 5, analysis_type: 'ai', status: 'pending', unread_only: true,
         total_emails: null, processed_emails: null, error_message: null,
         created_at: '2026-01-01T00:00:00Z', completed_at: null,
         summary: null, classified_emails: null,

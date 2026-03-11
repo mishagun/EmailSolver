@@ -49,14 +49,16 @@ export interface AnalysisResponse {
   id: number;
   analysis_type: string;
   status: string;
-  query: string | null;
+  unread_only: boolean;
   total_emails: number | null;
   processed_emails: number | null;
+  use_batch: boolean;
   error_message: string | null;
   created_at: string;
   completed_at: string | null;
   summary: CategorySummary[] | null;
   classified_emails: ClassifiedEmail[] | null;
+  ai_insights: string[] | null;
 }
 
 export interface AnalysisListResponse {
@@ -66,7 +68,7 @@ export interface AnalysisListResponse {
 
 export interface AnalysisCreateRequest {
   analysis_type?: 'inbox_scan' | 'ai';
-  query?: string;
+  unread_only?: boolean;
   max_emails?: number;
   auto_apply?: boolean;
   custom_categories?: string[];

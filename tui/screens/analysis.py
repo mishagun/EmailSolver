@@ -169,7 +169,7 @@ class AnalysisScreen(AppScreen):
 
         a = self._analysis
         self.query_one("#analysis-status", Label).update(a.status)
-        self.query_one("#analysis-query", Label).update(a.query or "")
+        self.query_one("#analysis-query", Label).update("unread" if a.unread_only else "all")
 
         progress_bar = self.query_one("#analysis-progress", ProgressBar)
         progress_label = self.query_one("#progress-label", Label)

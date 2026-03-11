@@ -199,7 +199,7 @@ class TestDashboardScreen:
                             AnalysisResponse(
                                 id=1,
                                 status="completed",
-                                query="is:unread",
+                                unread_only=True,
                                 total_emails=50,
                                 processed_emails=50,
                                 created_at=datetime(
@@ -225,7 +225,7 @@ class TestAnalysisScreen:
         return AnalysisResponse(
             id=1,
             status="completed",
-            query="is:unread",
+            unread_only=True,
             total_emails=2,
             processed_emails=2,
             created_at=datetime(2026, 3, 1, tzinfo=UTC),
@@ -297,7 +297,7 @@ class TestAnalysisScreen:
         processing = AnalysisResponse(
             id=1,
             status="processing",
-            query="is:unread",
+            unread_only=True,
             total_emails=100,
             processed_emails=40,
             created_at=datetime(2026, 3, 1, tzinfo=UTC),

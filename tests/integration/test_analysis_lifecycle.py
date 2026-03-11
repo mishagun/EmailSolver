@@ -15,7 +15,7 @@ async def test_full_analysis_creates_and_completes(
 
     response = await client.post(
         "/api/v1/analysis",
-        json={"query": "is:unread", "max_emails": 100},
+        json={"unread_only": True, "max_emails": 100},
     )
     assert response.status_code == 202
     data = response.json()
@@ -56,7 +56,7 @@ async def test_analysis_with_no_emails(
 
     response = await client.post(
         "/api/v1/analysis",
-        json={"query": "is:unread", "max_emails": 100},
+        json={"unread_only": True, "max_emails": 100},
     )
     assert response.status_code == 202
     analysis_id = response.json()["id"]
@@ -78,7 +78,7 @@ async def test_analysis_failure_sets_error_status(
 
     response = await client.post(
         "/api/v1/analysis",
-        json={"query": "is:unread", "max_emails": 100},
+        json={"unread_only": True, "max_emails": 100},
     )
     assert response.status_code == 202
     analysis_id = response.json()["id"]
@@ -96,7 +96,7 @@ async def test_analysis_persists_classified_emails_to_db(
 
     response = await client.post(
         "/api/v1/analysis",
-        json={"query": "is:unread", "max_emails": 100},
+        json={"unread_only": True, "max_emails": 100},
     )
     analysis_id = response.json()["id"]
     await wait_for_analysis(client=client, analysis_id=analysis_id)
@@ -125,7 +125,7 @@ async def test_analysis_stores_category_actions_in_db(
 
     response = await client.post(
         "/api/v1/analysis",
-        json={"query": "is:unread", "max_emails": 100},
+        json={"unread_only": True, "max_emails": 100},
     )
     analysis_id = response.json()["id"]
     await wait_for_analysis(client=client, analysis_id=analysis_id)
@@ -150,14 +150,14 @@ async def test_list_analyses_returns_created_analysis(
 
     await client.post(
         "/api/v1/analysis",
-        json={"query": "is:unread", "max_emails": 100},
+        json={"unread_only": True, "max_emails": 100},
     )
 
     response = await client.get("/api/v1/analysis")
     assert response.status_code == 200
     data = response.json()
     assert data["total"] >= 1
-    assert any(a["query"] == "is:unread" for a in data["analyses"])
+    assert any(a["unread_only"] is True for a in data["analyses"])
 
 
 async def test_delete_analysis_removes_from_db(
@@ -167,7 +167,7 @@ async def test_delete_analysis_removes_from_db(
 
     response = await client.post(
         "/api/v1/analysis",
-        json={"query": "is:unread", "max_emails": 100},
+        json={"unread_only": True, "max_emails": 100},
     )
     analysis_id = response.json()["id"]
     await wait_for_analysis(client=client, analysis_id=analysis_id)

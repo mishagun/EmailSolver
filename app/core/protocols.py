@@ -17,7 +17,8 @@ class BaseEmailService(ABC):
         self,
         *,
         credentials: Any,
-        query: str = "is:unread",
+        label_ids: list[str] | None = None,
+        query: str = "",
         max_results: int = 500,
     ) -> list[str]: ...
 
@@ -94,8 +95,30 @@ class BaseClassificationService(ABC):
 
     @abstractmethod
     async def verify_categories(
-        self, *, category_samples: dict[str, list[dict]]
+        self,
+        category_samples: dict[str, list[dict]],
     ) -> VerificationResult: ...
+
+    @abstractmethod
+    async def submit_batch_classification(
+        self,
+        *,
+        email_batches: list[list[EmailMetadata]],
+        existing_categories: list[str] | None = None,
+    ) -> str: ...
+
+    @abstractmethod
+    async def check_batch_status(self, *, batch_id: str) -> str: ...
+
+    @abstractmethod
+    async def retrieve_batch_results(
+        self, *, batch_id: str
+    ) -> dict[str, list[ClassificationResult]]: ...
+
+    @abstractmethod
+    async def generate_insights(
+        self, category_samples: dict[str, list[dict]]
+    ) -> list[str]: ...
 
 
 class BaseAnalysisRepository(ABC):
@@ -121,6 +144,7 @@ class BaseAnalysisRepository(ABC):
         status: str,
         processed_emails: int | None = None,
         total_emails: int | None = None,
+        batch_id: str | None = None,
         error_message: str | None = None,
         completed_at: datetime | None = None,
     ) -> None: ...
@@ -133,6 +157,11 @@ class BaseAnalysisRepository(ABC):
     @abstractmethod
     async def update_category_actions(
         self, *, analysis_id: int, category_actions: dict
+    ) -> None: ...
+
+    @abstractmethod
+    async def update_insights(
+        self, *, analysis_id: int, ai_insights: list[str]
     ) -> None: ...
 
 
